@@ -1,0 +1,17 @@
+# Binaries
+-wingman
+/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test coverage
+*.out
+cover.out
+
+# CI / local tooling
+/.results/
+.vscode/
+.idea/
