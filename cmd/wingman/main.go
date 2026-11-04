@@ -108,6 +108,7 @@ offer/answer flags:
   --label wingman         data channel label (default "wingman")
   --signaling dns|https   signaling transport (default "dns")
   --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
+  --signaling-secret S    shared secret for --signaling https (authenticates the channel)
   --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
@@ -140,9 +141,10 @@ type peerOpts struct {
 	zone         string
 	room         string
 	label        string
-	signaling    string
-	signalingURL string
-	turn         []string
+	signaling        string
+	signalingURL     string
+	signalingSecret  string
+	turn             []string
 	user         string
 	pass         string
 	metrics      bool
@@ -158,6 +160,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	label := fs.String("label", "wingman", "data channel label")
 	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
 	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
+	signalingSecret := fs.String("signaling-secret", "", "shared secret for --signaling https (authenticates the signaling channel)")
 	var turnServers stringSliceFlag
 	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
 	user := fs.String("user", "", "TURN username for --turn servers")
@@ -177,7 +180,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	}
 	return peerOpts{
 		addr: *addr, zone: *zone, room: *room, label: *label,
-		signaling: *signaling, signalingURL: *signalingURL,
+		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
 		turn: turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
 	}, nil
 }
@@ -236,18 +239,18 @@ func buildTransport(opts peerOpts) (sig.Transport, error) {
 	case "", "dns":
 		return newTransport(opts.addr, opts.zone), nil
 	case "https":
-		return newHTTPSTransport(opts.signalingURL)
+		return newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
 	default:
 		return nil, fmt.Errorf("unknown signaling %q (want dns or https)", opts.signaling)
 	}
 }
 
 // newHTTPSTransport builds an HTTPS transport from the given base URL.
-func newHTTPSTransport(baseURL string) (sig.Transport, error) {
+func newHTTPSTransport(baseURL, secret string) (sig.Transport, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("https: --signaling-url is required for --signaling https")
 	}
-	return &https.Transport{BaseURL: strings.TrimRight(baseURL, "/")}, nil
+	return &https.Transport{BaseURL: strings.TrimRight(baseURL, "/"), Secret: secret}, nil
 }
 
 // buildICEServers converts the parsed --turn servers into a pion ICE server

@@ -309,3 +309,173 @@ func TestHandlerStoresPerRoomKind(t *testing.T) {
 		t.Errorf("answer = %q, want ANSWER", got)
 	}
 }
+
+// TestHandlerDeletesOnRead verifies that a retrieved message is consumed and
+// removed, so a second GET for the same key returns 404. This is the regression
+// test for the unbounded-growth leak: without delete-on-read the entry persists
+// after every handshake and the handler's map grows without bound.
+func TestHandlerDeletesOnRead(t *testing.T) {
+	h := NewHandler()
+	srv := newTestServer(t, h)
+	client := srv.Client()
+
+	do := func(method, room string) int {
+		req, _ := http.NewRequestWithContext(context.Background(), method,
+			srv.URL+"/signaling?room="+room+"&kind=offer", nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", method, err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	post := func(room, body string) {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			srv.URL+"/signaling?room="+room+"&kind=offer", io.NopCloser(strings.NewReader(body)))
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("post %s: %v", room, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("post %s: status %d", room, resp.StatusCode)
+		}
+	}
+
+	post("room1", "OFFER")
+	if got := do(http.MethodGet, "room1"); got != http.StatusOK {
+		t.Fatalf("first get status = %d, want 200", got)
+	}
+	if got := do(http.MethodGet, "room1"); got != http.StatusNotFound {
+		t.Fatalf("second get status = %d, want 404 (message must be consumed)", got)
+	}
+}
+
+// TestHandlerSweepsStaleEntries verifies that entries older than the handler's
+// TTL are dropped on access, bounding memory for rooms that never complete a
+// handshake (an offer published but never answered would otherwise persist).
+func TestHandlerSweepsStaleEntries(t *testing.T) {
+	h := NewHandler()
+	h.TTL = time.Second
+
+	// Insert a fresh and a stale entry directly (same package).
+	h.mu.Lock()
+	h.msgs["fresh/offer"] = entry{data: []byte("FRESH"), at: time.Now()}
+	h.msgs["stale/offer"] = entry{data: []byte("STALE"), at: time.Now().Add(-2 * time.Second)}
+	h.mu.Unlock()
+
+	h.sweep(time.Now())
+
+	h.mu.Lock()
+	_, okFresh := h.msgs["fresh/offer"]
+	_, okStale := h.msgs["stale/offer"]
+	h.mu.Unlock()
+
+	if !okFresh {
+		t.Error("fresh entry should survive the sweep")
+	}
+	if okStale {
+		t.Error("stale entry should be swept after TTL")
+	}
+}
+
+// TestHandlerRequiresSecret verifies that when a handler is configured with a
+// secret, requests must present it: missing or wrong secrets are rejected with
+// 401, while a correct secret proceeds to the normal (here, not-found) path.
+func TestHandlerRequiresSecret(t *testing.T) {
+	const secret = "s3cr3t"
+	h := NewHandler()
+	h.Secret = secret
+	srv := newTestServer(t, h)
+	client := srv.Client()
+
+	get := func(withSecret bool) int {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodGet,
+			srv.URL+"/signaling?room=room&kind=offer", nil)
+		if withSecret {
+			req.Header.Set(secretHeader, secret)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+	post := func(withSecret bool) int {
+		req, _ := http.NewRequestWithContext(context.Background(), http.MethodPost,
+			srv.URL+"/signaling?room=room&kind=offer", io.NopCloser(strings.NewReader("x")))
+		if withSecret {
+			req.Header.Set(secretHeader, secret)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("post: %v", err)
+		}
+		resp.Body.Close()
+		return resp.StatusCode
+	}
+
+	if got := get(false); got != http.StatusUnauthorized {
+		t.Errorf("missing secret status = %d, want 401", got)
+	}
+	if got := post(false); got != http.StatusUnauthorized {
+		t.Errorf("missing secret post status = %d, want 401", got)
+	}
+	if got := get(true); got != http.StatusNotFound {
+		t.Errorf("correct-secret GET on empty room = %d, want 404 (auth passed)", got)
+	}
+	if got := post(true); got != http.StatusOK {
+		t.Errorf("correct-secret POST = %d, want 200", got)
+	}
+}
+
+// TestTransportSendsSecret verifies the transport attaches the secret header
+// when configured.
+func TestTransportSendsSecret(t *testing.T) {
+	captured := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured <- r.Header.Get(secretHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL, Secret: "s3cr3t"}
+	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if got := <-captured; got != "s3cr3t" {
+		t.Errorf("secret header = %q, want %q", got, "s3cr3t")
+	}
+}
+
+// TestTransportOmitsSecretWhenUnset verifies no secret header is sent when the
+// transport has none configured, preserving backward compatibility.
+func TestTransportOmitsSecretWhenUnset(t *testing.T) {
+	captured := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		captured <- r.Header.Get(secretHeader)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL}
+	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err != nil {
+		t.Fatalf("Publish: %v", err)
+	}
+	if got := <-captured; got != "" {
+		t.Errorf("secret header = %q, want empty", got)
+	}
+}
+
+// TestTransportSecretMismatchFails verifies that a transport whose secret does
+// not match the handler's is rejected by the server.
+func TestTransportSecretMismatchFails(t *testing.T) {
+	h := NewHandler()
+	h.Secret = "right"
+	srv := newTestServer(t, h)
+	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL, Secret: "wrong"}
+	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err == nil {
+		t.Fatal("expected publish to fail on secret mismatch")
+	}
+}
