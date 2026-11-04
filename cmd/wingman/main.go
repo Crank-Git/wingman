@@ -116,6 +116,7 @@ offer/answer flags:
   --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
   --signaling-allow-loopback-http  permit loopback HTTP for development and tests
   --signaling-secret S    shared secret for --signaling https (authenticates the channel)
+  --signaling-secret-file PATH  restricted token file for HTTPS authentication
   --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
@@ -126,6 +127,10 @@ serve flags:
   --listen 127.0.0.1:0    DNS UDP and TCP listen address (literal IP and port)
   --local-demo            permit unauthenticated loopback DNS
   --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS authentication
+  --https-listen ADDR     optional TLS signaling listen address
+  --tls-cert PATH         TLS certificate PEM file
+  --tls-key PATH          TLS private key PEM file
+  --signaling-secret-file PATH  restricted token file for HTTPS authentication
   --zone example.com      authoritative DNS zone this server serves
   --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
   --turn-server ADDR      also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478)
@@ -144,6 +149,10 @@ func runServe(ctx context.Context, args []string) error {
 	listen := fs.String("listen", "127.0.0.1:0", "DNS UDP and TCP listen address")
 	localDemo := fs.Bool("local-demo", false, "permit unauthenticated loopback DNS")
 	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
+	httpsListen := fs.String("https-listen", "", "optional TLS signaling listen address")
+	tlsCert := fs.String("tls-cert", "", "TLS certificate PEM file")
+	tlsKey := fs.String("tls-key", "", "TLS private key PEM file")
+	secretFile := fs.String("signaling-secret-file", "", "restricted HTTPS token file")
 	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
 	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
 	turnUser := fs.String("turn-user", "", "TURN username for the self-hosted server (enables relay candidates)")
@@ -170,6 +179,18 @@ func runServe(ctx context.Context, args []string) error {
 	} else if key == nil {
 		return errors.New("DNS requires --dns-tsig-key-file or explicit --local-demo")
 	}
+	httpsSrv, httpsListener, err := https.BindTLS(https.ServerConfig{
+		ListenAddr: *httpsListen, CertFile: *tlsCert, KeyFile: *tlsKey,
+		SecretFile: *secretFile, LocalDemo: *localDemo,
+	})
+	if err != nil {
+		return err
+	}
+	if httpsListener != nil {
+		// Close also covers a later DNS bind failure before ServeTLS starts.
+		// ServeTLS can already close this listener during normal cleanup.
+		defer func() { _ = httpsListener.Close() }()
+	}
 	srv := dns.NewServer()
 	srv.ListenAddr, srv.Zone, srv.TSIGKey = *listen, *zone, key
 	err = srv.Start(ctx)
@@ -177,6 +198,17 @@ func runServe(ctx context.Context, args []string) error {
 		return err
 	}
 	defer srv.Stop()
+	httpsResult := make(chan error, 1)
+	if httpsSrv != nil {
+		go func() { httpsResult <- httpsSrv.ServeTLS(httpsListener, "", "") }()
+		defer func() {
+			// Close can race with ServeTLS closing its listener after an error.
+			_ = httpsSrv.Close()
+			_ = httpsListener.Close()
+			<-httpsResult
+		}()
+		fmt.Printf("HTTPS listening on https://%s\n", httpsListener.Addr())
+	}
 	fmt.Printf("wingman server listening on %s (zone %q)\n", srv.Addr(), *zone)
 
 	var turnSrv *turnserver.Server
@@ -204,33 +236,40 @@ func runServe(ctx context.Context, args []string) error {
 			}
 		}()
 		fmt.Printf("metrics listening on %s/metrics\n", *metricsAddr)
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			_ = metricsSrv.Shutdown(shutdownCtx)
+		}()
 	}
 
-	<-ctx.Done()
-	if metricsSrv != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = metricsSrv.Shutdown(shutdownCtx)
+	select {
+	case <-ctx.Done():
+	case err := <-httpsResult:
+		// Keep the result available for the deferred goroutine join.
+		httpsResult <- err
+		return fmt.Errorf("HTTPS serve: %w", err)
 	}
 	return nil
 }
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	dnsTSIGKeyFile    string
-	addr              string
-	zone              string
-	room              string
-	label             string
-	signaling         string
-	signalingURL      string
-	signalingSecret   string
-	allowLoopbackHTTP bool
-	turn              []string
-	user              string
-	pass              string
-	metrics           bool
-	handshakeTimeout  time.Duration
+	dnsTSIGKeyFile      string
+	addr                string
+	zone                string
+	room                string
+	label               string
+	signaling           string
+	signalingURL        string
+	signalingSecret     string
+	signalingSecretFile string
+	allowLoopbackHTTP   bool
+	turn                []string
+	user                string
+	pass                string
+	metrics             bool
+	handshakeTimeout    time.Duration
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
@@ -245,6 +284,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
 	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
 	signalingSecret := fs.String("signaling-secret", "", "shared secret for --signaling https (authenticates the signaling channel)")
+	signalingSecretFile := fs.String("signaling-secret-file", "", "restricted HTTPS token file")
 	allowLoopbackHTTP := fs.Bool("signaling-allow-loopback-http", false, "permit loopback HTTP for development and tests")
 	var turnServers stringSliceFlag
 	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
@@ -270,8 +310,9 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	return peerOpts{
 		dnsTSIGKeyFile: *tsigFile, addr: *addr, zone: *zone, room: *room, label: *label,
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
-		allowLoopbackHTTP: *allowLoopbackHTTP,
-		turn:              turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		signalingSecretFile: *signalingSecretFile,
+		allowLoopbackHTTP:   *allowLoopbackHTTP,
+		turn:                turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
 		handshakeTimeout: *handshakeTimeout,
 	}, nil
 }
@@ -367,7 +408,11 @@ func buildTransport(opts peerOpts) (sig.Transport, error) {
 		tr.Resolver.(*dns.Dialer).TSIGKey = key
 		return tr, nil
 	case "https":
-		tr, err := newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
+		secret, err := https.LoadSecret(opts.signalingSecret, opts.signalingSecretFile)
+		if err != nil {
+			return nil, err
+		}
+		tr, err := newHTTPSTransport(opts.signalingURL, secret)
 		if err != nil {
 			return nil, err
 		}
