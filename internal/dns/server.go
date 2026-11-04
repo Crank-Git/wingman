@@ -205,9 +205,7 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
 		if s.Metrics != nil {
-			observed := &metricsWriter{ResponseWriter: w, code: dns.RcodeServerFailure}
-			w = observed
-			defer func() { s.recordQuery(req, observed.code) }()
+			w = &metricsWriter{ResponseWriter: w, collector: s.Metrics, operation: queryOperation(req)}
 		}
 		responseSize := truncateSize
 		if s.TSIGKey != nil {

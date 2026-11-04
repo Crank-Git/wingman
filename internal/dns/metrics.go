@@ -10,21 +10,18 @@ import (
 
 type metricsWriter struct {
 	dns.ResponseWriter
-	code int
+	collector *metrics.Metrics
+	operation string
 }
 
 func (w *metricsWriter) WriteMsg(m *dns.Msg) error {
-	w.code = m.Rcode
-	return w.ResponseWriter.WriteMsg(m)
-}
-
-func (s *Server) recordQuery(req *dns.Msg, code int) {
-	operation := queryOperation(req)
 	result := metrics.DNSRejected
-	if code == dns.RcodeSuccess || (operation == metrics.DNSPoll && code == dns.RcodeNameError) {
+	if m.Rcode == dns.RcodeSuccess || (w.operation == metrics.DNSPoll && m.Rcode == dns.RcodeNameError) {
 		result = metrics.DNSSuccess
 	}
-	s.Metrics.RecordDNSRequest(operation, result)
+	// The client can scrape metrics as soon as it receives this response.
+	w.collector.RecordDNSRequest(w.operation, result)
+	return w.ResponseWriter.WriteMsg(m)
 }
 
 func queryOperation(req *dns.Msg) string {
