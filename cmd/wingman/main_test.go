@@ -654,6 +654,23 @@ func TestBuildTransport(t *testing.T) {
 		}
 	})
 
+	t.Run("https with secret", func(t *testing.T) {
+		tr, err := buildTransport(peerOpts{
+			signaling: "https", signalingURL: "https://sig.example.com",
+			signalingSecret: "s3cr3t",
+		})
+		if err != nil {
+			t.Fatalf("buildTransport https: %v", err)
+		}
+		htr, ok := tr.(*https.Transport)
+		if !ok {
+			t.Fatalf("expected *https.Transport, got %T", tr)
+		}
+		if htr.Secret != "s3cr3t" {
+			t.Errorf("Secret = %q, want s3cr3t", htr.Secret)
+		}
+	})
+
 	t.Run("unknown signaling", func(t *testing.T) {
 		if _, err := buildTransport(peerOpts{signaling: "smtp"}); err == nil {
 			t.Fatal("expected error for unknown signaling")
