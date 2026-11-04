@@ -20,6 +20,7 @@ import (
 	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/peer"
 	"github.com/Crank-Git/wingman/internal/sig"
+	"github.com/Crank-Git/wingman/internal/turnserver"
 )
 
 // blockingReader feeds bytes to a scanner on demand and returns io.EOF once
@@ -132,6 +133,82 @@ func TestRunServeStartsAndStops(t *testing.T) {
 	}()
 	if err := runServe(ctx, nil); err != nil {
 		t.Fatalf("runServe: %v", err)
+	}
+}
+
+// TestStartTurnServerDisabled confirms that with no --turn-server the helper is
+// a no-op: nil server, nil error, no output.
+func TestStartTurnServerDisabled(t *testing.T) {
+	var buf strings.Builder
+	s, err := startTurnServer(&buf, turnserver.Config{})
+	if err != nil {
+		t.Fatalf("startTurnServer (disabled): %v", err)
+	}
+	if s != nil {
+		t.Fatal("startTurnServer (disabled): got server, want nil")
+	}
+	if buf.Len() != 0 {
+		t.Fatalf("startTurnServer (disabled): wrote %q", buf.String())
+	}
+}
+
+// TestStartTurnServerSTUNOnly confirms a credentialless server advertises only
+// a STUN URI.
+func TestStartTurnServerSTUNOnly(t *testing.T) {
+	var buf strings.Builder
+	s, err := startTurnServer(&buf, turnserver.Config{Addr: "127.0.0.1:0"})
+	if err != nil {
+		t.Fatalf("startTurnServer: %v", err)
+	}
+	defer s.Close()
+	if s.TURNURI() != "" {
+		t.Errorf("TURNURI() without creds = %q, want empty", s.TURNURI())
+	}
+	if !strings.Contains(buf.String(), s.STUNURI()) {
+		t.Errorf("output missing STUN URI %q:\n%s", s.STUNURI(), buf.String())
+	}
+}
+
+// TestStartTurnServerWithCreds confirms a server with credentials advertises a
+// TURN URI and prints the peer hint with the credentials.
+func TestStartTurnServerWithCreds(t *testing.T) {
+	var buf strings.Builder
+	s, err := startTurnServer(&buf, turnserver.Config{Addr: "127.0.0.1:0", Username: "alice", Password: "s3cret"})
+	if err != nil {
+		t.Fatalf("startTurnServer: %v", err)
+	}
+	defer s.Close()
+	if s.TURNURI() == "" {
+		t.Fatal("TURNURI() with creds = empty, want a turn: URI")
+	}
+	if !strings.Contains(buf.String(), s.TURNURI()) {
+		t.Errorf("output missing TURN URI %q:\n%s", s.TURNURI(), buf.String())
+	}
+	if !strings.Contains(buf.String(), "--user alice --pass s3cret") {
+		t.Errorf("relay hint missing credentials:\n%s", buf.String())
+	}
+}
+
+// TestStartTurnServerRejectsWildcard confirms binding a wildcard interface
+// without an explicit external address is rejected.
+func TestStartTurnServerRejectsWildcard(t *testing.T) {
+	var buf strings.Builder
+	if _, err := startTurnServer(&buf, turnserver.Config{Addr: "0.0.0.0:0"}); err == nil {
+		t.Fatal("startTurnServer wildcard without external: expected error")
+	}
+}
+
+// TestRunServeTurnServer runs the serve subcommand with a self-hosted TURN
+// server and confirms it starts and stops cleanly on ctx cancellation.
+func TestRunServeTurnServer(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		time.Sleep(150 * time.Millisecond)
+		cancel()
+	}()
+	if err := runServe(ctx, []string{"--turn-server", "127.0.0.1:0", "--turn-user", "u", "--turn-pass", "p"}); err != nil {
+		t.Fatalf("runServe with --turn-server: %v", err)
 	}
 }
 
