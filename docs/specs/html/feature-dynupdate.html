@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: RFC 2136 DynUpdate transport</h1>
-<p class="meta">Epic 5: DynUpdate &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 5: DynUpdate &nbsp; <span class="badge">built</span></p>
 <h2 id="dynupdate-rfc-2136-dynupdate-transport">RFC 2136 DynUpdate transport</h2>
 <h3 id="dynupdate-purpose">Purpose</h3>
 <p>Implement the advertised dynamic-update backend against a real authoritative DNS service.</p>
@@ -225,17 +225,17 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Test stale RRset replacement, shuffled records, wrong zone, invalid signature, refused update, oversize data, and cancellation. A missing TCP route fails explicitly. There is no silent fallback to write-over-query. An interrupted exchange can leave authoritative records until cleanup. Record this operational responsibility in the guide.</p>
 <h3 id="dynupdate-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-dynupdate-1: CLI parsing constructs the DynUpdate transport.
+<li>[x] FR-dynupdate-1: CLI parsing constructs the DynUpdate transport.
 </li>
-<li>[ ] FR-dynupdate-2: A replacement of a longer message leaves no stale fragments.
+<li>[x] FR-dynupdate-2: A replacement of a longer message leaves no stale fragments.
 </li>
-<li>[ ] FR-dynupdate-3: A shuffled TXT answer reconstructs identical bytes.
+<li>[x] FR-dynupdate-3: A shuffled TXT answer reconstructs identical bytes.
 </li>
-<li>[ ] FR-dynupdate-4: A missing key fails before any UPDATE.
+<li>[x] FR-dynupdate-4: A missing key fails before any UPDATE.
 </li>
-<li>[ ] FR-dynupdate-5: Cleanup removes only the selected room records.
+<li>[x] FR-dynupdate-5: Cleanup removes only the selected room records.
 </li>
-<li>[ ] FR-dynupdate-6: A pinned BIND fixture completes a real offer/answer exchange.
+<li>[x] FR-dynupdate-6: A pinned BIND fixture completes a real offer/answer exchange.
 </li>
 </ul>
 <h3 id="dynupdate-out-of-scope">Out of scope</h3>

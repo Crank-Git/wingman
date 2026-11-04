@@ -266,7 +266,7 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><td>HTTPS safety and atomic consumption</td><td><a href="html/feature-https-repairs.html">https-repairs</a></td><td>built</td><td>Epic 2: HTTPS repairs</td></tr>
 <tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>built</td><td>Epic 3: Peer repairs</td></tr>
 <tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>built</td><td>Epic 4: Server operations</td></tr>
-<tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>issued</td><td>Epic 5: DynUpdate</td></tr>
+<tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>built</td><td>Epic 5: DynUpdate</td></tr>
 <tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>issued</td><td>Epic 6: Diagnostics</td></tr>
 </table></div>
 <p>Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.</p>
@@ -455,6 +455,8 @@ body.rv-open .layout { padding-right:21rem; }
 </ul>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
+</li>
 <li>2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
 </li>
 <li>2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
@@ -545,6 +547,9 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><td>Concurrent coverage profiles</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/62">#62</a></td></tr>
 <tr><td>Ephemeral DNS port recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/84">#84</a></td></tr>
 <tr><td>Server deployment repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/90">#90</a>, <a href="https://github.com/Crank-Git/wingman/issues/91">#91</a>, <a href="https://github.com/Crank-Git/wingman/issues/98">#98</a></td></tr>
+</table></div>
+<div class="table-wrap"><table>
+<tr><th>DynUpdate test recovery</th><th><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a></th><th><a href="https://github.com/Crank-Git/wingman/issues/109">#109</a></th></tr>
 </table></div><nav class="pager">
 <span></span>
 <a href="html/page-audit.html">Repository audit and evidence &rarr;</a>

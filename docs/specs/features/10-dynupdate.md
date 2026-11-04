@@ -2,7 +2,7 @@
 id: dynupdate
 feature: RFC 2136 DynUpdate transport
 epic: Epic 5: DynUpdate
-status: issued
+status: built
 issues: [40, 41, 42, 43, 44, 45]
 mockups: [mockups/10-dynupdate.html]
 ---
@@ -80,12 +80,12 @@ A missing TCP route fails explicitly. There is no silent fallback to write-over-
 An interrupted exchange can leave authoritative records until cleanup. Record this operational responsibility in the guide.
 
 ## Acceptance criteria
-- [ ] FR-dynupdate-1: CLI parsing constructs the DynUpdate transport.
-- [ ] FR-dynupdate-2: A replacement of a longer message leaves no stale fragments.
-- [ ] FR-dynupdate-3: A shuffled TXT answer reconstructs identical bytes.
-- [ ] FR-dynupdate-4: A missing key fails before any UPDATE.
-- [ ] FR-dynupdate-5: Cleanup removes only the selected room records.
-- [ ] FR-dynupdate-6: A pinned BIND fixture completes a real offer/answer exchange.
+- [x] FR-dynupdate-1: CLI parsing constructs the DynUpdate transport.
+- [x] FR-dynupdate-2: A replacement of a longer message leaves no stale fragments.
+- [x] FR-dynupdate-3: A shuffled TXT answer reconstructs identical bytes.
+- [x] FR-dynupdate-4: A missing key fails before any UPDATE.
+- [x] FR-dynupdate-5: Cleanup removes only the selected room records.
+- [x] FR-dynupdate-6: A pinned BIND fixture completes a real offer/answer exchange.
 
 ## Out of scope
 No provider-specific A/AAAA dynamic DNS API, DNS hosting signup, DNSSEC provisioning, or public authoritative server mutation during CI.
