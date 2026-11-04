@@ -174,7 +174,12 @@ func TestRejectsWildcardWithoutExternal(t *testing.T) {
 // TestExternalAddrOverridesHost confirms the advertised address uses the
 // configured external host even when bound to a wildcard interface.
 func TestExternalAddrOverridesHost(t *testing.T) {
-	s := startTestServer(t, Config{Addr: "0.0.0.0:0", ExternalAddr: "198.51.100.7"})
+	s, err := New(Config{Addr: "0.0.0.0:0", ExternalAddr: "198.51.100.7"})
+	if err != nil {
+		t.Fatalf("New(0.0.0.0:0): %v", err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+
 	host, _, _ := net.SplitHostPort(s.hostPort())
 	if host != "198.51.100.7" {
 		t.Errorf("advertised host = %q, want 198.51.100.7", host)
