@@ -22,6 +22,8 @@ import (
 // are stored; poll queries (the room poll name) return the stored fragments as
 // TXT records. It is safe for concurrent use.
 type Server struct {
+	ListenAddr    string     // Set before Start. Empty selects 127.0.0.1:0.
+	Zone          string     // Set before Start or requests. Empty accepts all zones for library callers.
 	TSIGKey       *TSIGKey   // Set before Start or requests.
 	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
 	frags         map[storageKey]*fragmentEntry
@@ -78,7 +80,7 @@ func (s *Server) Addr() string {
 	return s.addr
 }
 
-// Start serves DNS on UDP and TCP listeners at the same loopback address.
+// Start serves DNS on UDP and TCP listeners at the configured address.
 // Context cancellation stops the listeners and the one-second expiry sweep.
 // Entries expire 120 seconds after their first fragment arrives.
 // Start tries at most ten UDP ports if TCP reports an address collision.
@@ -93,6 +95,9 @@ func (s *Server) Start(ctx context.Context) error {
 		if err := s.TSIGKey.validate(); err != nil {
 			return err
 		}
+	}
+	if err := s.validateConfig(); err != nil {
+		return err
 	}
 	pc, tcpLn, err := s.listenPair()
 	if err != nil {
@@ -119,8 +124,13 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
+	address := s.ListenAddr
+	if address == "" {
+		address = "127.0.0.1:0"
+	}
+	_, port, _ := net.SplitHostPort(address) // validateConfig checks the address before bind.
 	for attempt := 1; ; attempt++ {
-		pc, err := s.listenPacket("udp", "127.0.0.1:0")
+		pc, err := s.listenPacket("udp", address)
 		if err != nil {
 			return nil, nil, fmt.Errorf("listen DNS UDP: %w", err)
 		}
@@ -132,7 +142,7 @@ func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
 		if closeErr := pc.Close(); closeErr != nil {
 			return nil, nil, errors.Join(fmt.Errorf("listen DNS TCP: %w", err), fmt.Errorf("close DNS UDP: %w", closeErr))
 		}
-		if !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
+		if port != "0" || !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
 			return nil, nil, fmt.Errorf("listen DNS TCP: %w", err)
 		}
 	}
@@ -221,6 +231,11 @@ func (s *Server) handle(w dns.ResponseWriter, req *dns.Msg, truncateSize int) {
 	}
 
 	if parsed, err := sig.ParseRendezvousName(name); err == nil {
+		if !s.servesZone(parsed.Zone) {
+			// A failed refusal write cannot grant storage access.
+			_ = w.WriteMsg(setRcode(req, dns.RcodeRefused))
+			return
+		}
 		s.storeFragment(w, req, parsed)
 		return
 	}
@@ -329,6 +344,11 @@ func (s *Server) respondPoll(w dns.ResponseWriter, req *dns.Msg, name string, tr
 		return
 	}
 	zone := strings.Join(fields[3:], ".")
+	if !s.servesZone(zone) {
+		// A failed refusal write cannot grant storage access.
+		_ = w.WriteMsg(setRcode(req, dns.RcodeRefused))
+		return
+	}
 	key := storageKey{zone: zone, room: room, kind: kind}
 
 	s.mu.Lock()

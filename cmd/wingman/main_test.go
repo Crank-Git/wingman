@@ -132,7 +132,7 @@ func TestRunServeStartsAndStops(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
-	if err := runServe(ctx, nil); err != nil {
+	if err := runServe(ctx, []string{"--local-demo"}); err != nil {
 		t.Fatalf("runServe: %v", err)
 	}
 }
@@ -208,7 +208,7 @@ func TestRunServeTurnServer(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		cancel()
 	}()
-	if err := runServe(ctx, []string{"--turn-server", "127.0.0.1:0", "--turn-user", "u", "--turn-pass", "p"}); err != nil {
+	if err := runServe(ctx, []string{"--local-demo", "--turn-server", "127.0.0.1:0", "--turn-user", "u", "--turn-pass", "p"}); err != nil {
 		t.Fatalf("runServe with --turn-server: %v", err)
 	}
 }
@@ -233,7 +233,7 @@ func TestRunServeServesMetrics(t *testing.T) {
 	}()
 
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, []string{"--metrics-addr", addr}) }()
+	go func() { done <- runServe(ctx, []string{"--local-demo", "--metrics-addr", addr}) }()
 
 	url := "http://" + addr + "/metrics"
 	var resp *http.Response
@@ -438,7 +438,7 @@ func TestDispatchRoutesCommands(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
-	if err := dispatch(ctx, []string{"serve"}); err != nil {
+	if err := dispatch(ctx, []string{"serve", "--local-demo"}); err != nil {
 		t.Fatalf("dispatch serve: %v", err)
 	}
 
