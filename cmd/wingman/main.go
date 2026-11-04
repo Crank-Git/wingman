@@ -142,7 +142,7 @@ serve flags:
 
 // runServe starts the in-process DNS signaling server and blocks until ctx is
 // cancelled (Ctrl-C). It prints the address peers must dial.
-func runServe(ctx context.Context, args []string) error {
+func runServe(ctx context.Context, args []string) (result error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
@@ -186,11 +186,8 @@ func runServe(ctx context.Context, args []string) error {
 	if err != nil {
 		return err
 	}
-	if httpsListener != nil {
-		// Close also covers a later DNS bind failure before ServeTLS starts.
-		// ServeTLS can already close this listener during normal cleanup.
-		defer func() { _ = httpsListener.Close() }()
-	}
+	// Close also covers a later DNS bind failure before ServeTLS starts.
+	defer func() { result = closeHTTPSListener(httpsListener, result) }()
 	srv := dns.NewServer()
 	srv.ListenAddr, srv.Zone, srv.TSIGKey = *listen, *zone, key
 	err = srv.Start(ctx)
@@ -202,10 +199,9 @@ func runServe(ctx context.Context, args []string) error {
 	if httpsSrv != nil {
 		go func() { httpsResult <- httpsSrv.ServeTLS(httpsListener, "", "") }()
 		defer func() {
-			// Close can race with ServeTLS closing its listener after an error.
-			_ = httpsSrv.Close()
-			_ = httpsListener.Close()
-			<-httpsResult
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			result = shutdownHTTPS(shutdownCtx, httpsSrv, httpsResult, result)
 		}()
 		fmt.Printf("HTTPS listening on https://%s\n", httpsListener.Addr())
 	}
@@ -248,7 +244,7 @@ func runServe(ctx context.Context, args []string) error {
 	case err := <-httpsResult:
 		// Keep the result available for the deferred goroutine join.
 		httpsResult <- err
-		return fmt.Errorf("HTTPS serve: %w", err)
+		return nil
 	}
 	return nil
 }
