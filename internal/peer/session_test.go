@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Crank-Git/wingman/internal/dns"
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
 
@@ -452,5 +453,44 @@ func TestRunAnswererPublishError(t *testing.T) {
 	case <-offerDone:
 	case <-time.After(5 * time.Second):
 		t.Fatal("offerer did not return after cancel")
+	}
+}
+
+// TestSessionRecordsGatheredCandidates verifies that ICE candidate types are
+// recorded on the metrics collector during a real handshake. This is the test
+// that would have caught the candidate-distribution feature being half-wired:
+// the metrics collector must observe host (and possibly srflx/relay)
+// candidates gathered over the wire, not only when RecordCandidate is called
+// directly.
+func TestSessionRecordsGatheredCandidates(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	srv := dns.NewServer()
+	if err := srv.Start(ctx); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+	defer srv.Stop()
+
+	const (
+		room = "cand-room"
+		zone = "example.com"
+	)
+
+	m := metrics.New()
+	offerer := NewSession(RoleOfferer, Config{
+		Room: room, Zone: zone,
+		Transport: newTestTransport(srv.Addr(), zone), Label: "wingman",
+	}).WithMetrics(m)
+	answerer := NewSession(RoleAnswerer, Config{
+		Room: room, Zone: zone,
+		Transport: newTestTransport(srv.Addr(), zone), Label: "wingman",
+	}).WithMetrics(m)
+
+	runHandshake(t, ctx, offerer, answerer)
+
+	cands := m.Candidates()
+	if cands["host"] == 0 {
+		t.Fatalf("host candidates not recorded during run: %v", cands)
 	}
 }

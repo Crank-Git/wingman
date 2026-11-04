@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"time"
 
 	"github.com/Crank-Git/wingman/internal/dns"
+	"github.com/Crank-Git/wingman/internal/https"
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/peer"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
@@ -550,4 +553,331 @@ func TestChatMessageDelivery(t *testing.T) {
 	brOffer.ch <- []byte("hello\n")
 
 	waitOut(t, ansOut, "answer: received \"hello\"", 5*time.Second)
+}
+
+// TestBuildTransport checks signaling transport selection for each --signaling
+// value, including the https requirement for a --signaling-url.
+func TestBuildTransport(t *testing.T) {
+	t.Run("dns default", func(t *testing.T) {
+		tr, err := buildTransport(peerOpts{addr: "127.0.0.1:5353", zone: defaultZone, room: "r"})
+		if err != nil {
+			t.Fatalf("buildTransport dns: %v", err)
+		}
+		if _, ok := tr.(*dns.WriteOverQuery); !ok {
+			t.Fatalf("expected *dns.WriteOverQuery, got %T", tr)
+		}
+	})
+
+	t.Run("https", func(t *testing.T) {
+		tr, err := buildTransport(peerOpts{signaling: "https", signalingURL: "https://sig.example.com"})
+		if err != nil {
+			t.Fatalf("buildTransport https: %v", err)
+		}
+		htr, ok := tr.(*https.Transport)
+		if !ok {
+			t.Fatalf("expected *https.Transport, got %T", tr)
+		}
+		if htr.BaseURL != "https://sig.example.com" {
+			t.Errorf("BaseURL = %q, want https://sig.example.com", htr.BaseURL)
+		}
+	})
+
+	t.Run("https trims trailing slash", func(t *testing.T) {
+		tr, err := buildTransport(peerOpts{signaling: "https", signalingURL: "https://sig.example.com/"})
+		if err != nil {
+			t.Fatalf("buildTransport https: %v", err)
+		}
+		if tr.(*https.Transport).BaseURL != "https://sig.example.com" {
+			t.Errorf("BaseURL = %q, want https://sig.example.com", tr.(*https.Transport).BaseURL)
+		}
+	})
+
+	t.Run("https without url", func(t *testing.T) {
+		if _, err := buildTransport(peerOpts{signaling: "https"}); err == nil {
+			t.Fatal("expected error for https without --signaling-url")
+		}
+	})
+
+	t.Run("unknown signaling", func(t *testing.T) {
+		if _, err := buildTransport(peerOpts{signaling: "smtp"}); err == nil {
+			t.Fatal("expected error for unknown signaling")
+		}
+	})
+}
+
+// TestBuildICEServers checks that --turn servers become pion ICE servers and
+// that invalid URIs are rejected.
+func TestBuildICEServers(t *testing.T) {
+	t.Run("no turn returns nil", func(t *testing.T) {
+		ice, err := buildICEServers(peerOpts{})
+		if err != nil {
+			t.Fatalf("buildICEServers: %v", err)
+		}
+		if ice != nil {
+			t.Errorf("expected nil ICE servers without --turn, got %v", ice)
+		}
+	})
+
+	t.Run("valid turn server", func(t *testing.T) {
+		ice, err := buildICEServers(peerOpts{turn: []string{"turn:stun.example.com:3478"}, user: "bob", pass: "secret"})
+		if err != nil {
+			t.Fatalf("buildICEServers: %v", err)
+		}
+		if len(ice) != 1 {
+			t.Fatalf("expected 1 ICE server, got %d", len(ice))
+		}
+		if ice[0].URLs[0] != "turn:stun.example.com:3478" {
+			t.Errorf("URLs[0] = %q, want turn:stun.example.com:3478", ice[0].URLs[0])
+		}
+		if ice[0].Username != "bob" {
+			t.Errorf("Username = %q, want bob", ice[0].Username)
+		}
+		if ice[0].Credential != "secret" {
+			t.Errorf("Credential = %q, want secret", ice[0].Credential)
+		}
+	})
+
+	t.Run("multiple turn servers", func(t *testing.T) {
+		ice, err := buildICEServers(peerOpts{turn: []string{"turn:a.example.com:3478", "stun:b.example.com:3478"}, user: "u", pass: "p"})
+		if err != nil {
+			t.Fatalf("buildICEServers: %v", err)
+		}
+		if len(ice) != 2 {
+			t.Errorf("expected 2 ICE servers, got %d", len(ice))
+		}
+	})
+
+	t.Run("invalid uri", func(t *testing.T) {
+		if _, err := buildICEServers(peerOpts{turn: []string{"not a uri"}}); err == nil {
+			t.Fatal("expected error for invalid turn URI")
+		}
+	})
+}
+
+// TestParsePeerFlagsSignaling checks that the M5 flags parse into peerOpts.
+func TestParsePeerFlagsSignaling(t *testing.T) {
+	opts, err := parsePeerFlags("offer", []string{
+		"--addr", "127.0.0.1:5353",
+		"--room", "r",
+		"--signaling", "https",
+		"--signaling-url", "https://sig.example.com",
+		"--turn", "turn:a.example.com:3478",
+		"--turn", "stun:b.example.com:3478",
+		"--user", "bob",
+		"--pass", "secret",
+		"--metrics",
+	})
+	if err != nil {
+		t.Fatalf("parsePeerFlags: %v", err)
+	}
+	if opts.signaling != "https" {
+		t.Errorf("signaling = %q, want https", opts.signaling)
+	}
+	if opts.signalingURL != "https://sig.example.com" {
+		t.Errorf("signalingURL = %q", opts.signalingURL)
+	}
+	if len(opts.turn) != 2 {
+		t.Errorf("turn = %v, want two servers", opts.turn)
+	}
+	if opts.user != "bob" || opts.pass != "secret" {
+		t.Errorf("user/pass = %q/%q, want bob/secret", opts.user, opts.pass)
+	}
+	if !opts.metrics {
+		t.Error("metrics flag not parsed")
+	}
+}
+
+// TestParsePeerFlagsValidation checks the cross-flag requirements: https needs a
+// URL and dns needs an addr.
+func TestParsePeerFlagsValidation(t *testing.T) {
+	t.Run("https without url", func(t *testing.T) {
+		if _, err := parsePeerFlags("offer", []string{"--room", "r", "--signaling", "https"}); err == nil {
+			t.Fatal("expected error for https without --signaling-url")
+		}
+	})
+
+	t.Run("dns without addr", func(t *testing.T) {
+		if _, err := parsePeerFlags("offer", []string{"--room", "r"}); err == nil {
+			t.Fatal("expected error for dns without --addr")
+		}
+	})
+
+	t.Run("missing room", func(t *testing.T) {
+		if _, err := parsePeerFlags("offer", []string{"--addr", "127.0.0.1:5353"}); err == nil {
+			t.Fatal("expected error for missing --room")
+		}
+	})
+}
+
+// TestStartSessionSuccessMetrics checks that a successful handshake records one
+// attempt, one success, and a handshake latency sample.
+func TestStartSessionSuccessMetrics(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatalf("startServe: %v", err)
+	}
+	defer srv.Stop()
+
+	m := metrics.New()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	room := "metrics-success-room"
+	go func() {
+		if _, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
+			t.Errorf("connectAnswer: %v", err)
+		}
+	}()
+	sess, err := startSession(ctx, peer.RoleOfferer, peer.Config{
+		Room:      room,
+		Zone:      defaultZone,
+		Transport: newTransport(srv.Addr(), defaultZone),
+	}, m)
+	if err != nil {
+		t.Fatalf("startSession: %v", err)
+	}
+	if sess == nil {
+		t.Fatal("startSession returned nil session")
+	}
+	if got := m.ConnectionsAttempted(); got != 1 {
+		t.Errorf("ConnectionsAttempted = %d, want 1", got)
+	}
+	if got := m.ConnectionsSucceeded(); got != 1 {
+		t.Errorf("ConnectionsSucceeded = %d, want 1", got)
+	}
+	if got := m.ConnectionsFailed(); got != 0 {
+		t.Errorf("ConnectionsFailed = %d, want 0", got)
+	}
+	if got := m.HandshakeCount(); got != 1 {
+		t.Errorf("HandshakeCount = %d, want 1", got)
+	}
+	if m.HandshakeLatencyTotal() <= 0 {
+		t.Errorf("HandshakeLatencyTotal = %v, want > 0", m.HandshakeLatencyTotal())
+	}
+}
+
+// TestStartSessionFailureMetrics checks that a failed handshake records a
+// failure and a failed connection without recording a success.
+func TestStartSessionFailureMetrics(t *testing.T) {
+	m := metrics.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	_, err := startSession(ctx, peer.RoleOfferer, peer.Config{
+		Room:      "nope",
+		Zone:      defaultZone,
+		Transport: newTransport("127.0.0.1:1", defaultZone),
+	}, m)
+	if err == nil {
+		t.Fatal("expected a connect error against an unreachable server")
+	}
+	if got := m.ConnectionsFailed(); got != 1 {
+		t.Errorf("ConnectionsFailed = %d, want 1", got)
+	}
+	if got := m.Failures(); got != 1 {
+		t.Errorf("Failures = %d, want 1", got)
+	}
+	if got := m.ConnectionsSucceeded(); got != 0 {
+		t.Errorf("ConnectionsSucceeded = %d, want 0", got)
+	}
+}
+
+// TestRunPeerHTTPS drives a full offer/answer handshake and a data-channel
+// message exchange over the HTTPS signaling transport, proving the fallback
+// path works end to end.
+func TestRunPeerHTTPS(t *testing.T) {
+	h := https.NewHandler()
+	srv := httptest.NewServer(h)
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	room := "https-room"
+	ansOut := &lockedBuffer{}
+	brAns := newBlockingReader()
+	ansDone := make(chan error, 1)
+	go func() {
+		ansDone <- runPeer(ctx, peer.RoleAnswerer, peerOpts{
+			room:         room,
+			signaling:    "https",
+			signalingURL: srv.URL,
+		}, brAns, ansOut)
+	}()
+
+	offerOut := &lockedBuffer{}
+	brOffer := newBlockingReader()
+	offerDone := make(chan error, 1)
+	go func() {
+		offerDone <- runPeer(ctx, peer.RoleOfferer, peerOpts{
+			room:         room,
+			signaling:    "https",
+			signalingURL: srv.URL,
+		}, brOffer, offerOut)
+	}()
+
+	waitOut(t, offerOut, "offer: connected", 10*time.Second)
+	waitOut(t, ansOut, "answer: connected", 10*time.Second)
+
+	brOffer.ch <- []byte("hello over https\n")
+	waitOut(t, ansOut, "answer: received \"hello over https\"", 10*time.Second)
+
+	// Unblock both scanners so the runPeer goroutines can return.
+	close(brOffer.done)
+	close(brAns.done)
+
+	select {
+	case err := <-offerDone:
+		if err != nil {
+			t.Fatalf("runPeer offerer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("offerer did not return")
+	}
+	select {
+	case err := <-ansDone:
+		if err != nil {
+			t.Fatalf("runPeer answerer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("answerer did not return")
+	}
+}
+
+// TestRunPeerMetricsPrints checks that --metrics prints the Prometheus metrics
+// text after a successful handshake.
+func TestRunPeerMetricsPrints(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatalf("startServe: %v", err)
+	}
+	defer srv.Stop()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	room := "metrics-print-room"
+	go func() {
+		if _, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
+			t.Errorf("connectAnswer: %v", err)
+		}
+	}()
+
+	// An empty reader makes chat's scanner hit EOF immediately, so runPeer
+	// returns right after the handshake completes and metrics are printed.
+	out := &lockedBuffer{}
+	opts := peerOpts{
+		addr:    srv.Addr(),
+		zone:    defaultZone,
+		room:    room,
+		label:   "wingman",
+		metrics: true,
+	}
+	if err := runPeer(ctx, peer.RoleOfferer, opts, strings.NewReader(""), out); err != nil {
+		t.Fatalf("runPeer with metrics: %v", err)
+	}
+	if !strings.Contains(out.String(), "wingman_connections_succeeded") {
+		t.Fatalf("metrics output missing success counter: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "# TYPE") {
+		t.Fatalf("metrics output missing Prometheus TYPE lines: %q", out.String())
+	}
 }

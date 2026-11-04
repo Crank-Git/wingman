@@ -15,6 +15,7 @@ import (
 
 	"github.com/pion/webrtc/v4"
 
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
 
@@ -74,6 +75,7 @@ type Session struct {
 	pc       *webrtc.PeerConnection
 	dataChan *webrtc.DataChannel
 	onMessage MessageHandler
+	met      *metrics.Metrics
 
 	openCh chan struct{}
 }
@@ -97,6 +99,16 @@ func (s *Session) OnMessage(h MessageHandler) {
 	s.mu.Lock()
 	s.onMessage = h
 	s.mu.Unlock()
+}
+
+// WithMetrics registers a metrics collector. When set, the session records the
+// type of every gathered ICE candidate (host, srflx, relay, ...) so the candidate
+// distribution can be reported. It returns the session to allow chaining.
+func (s *Session) WithMetrics(m *metrics.Metrics) *Session {
+	s.mu.Lock()
+	s.met = m
+	s.mu.Unlock()
+	return s
 }
 
 // DataChannel returns the connected data channel, if the session has completed.
@@ -155,6 +167,18 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 	pc.OnDataChannel(func(dc *webrtc.DataChannel) {
 		s.setDataChannel(dc)
 		s.watchChannel(dc)
+	})
+
+	// Record each gathered candidate's type so callers can report the
+	// candidate distribution. The handler fires with a nil candidate once
+	// gathering completes, which we ignore.
+	pc.OnICECandidate(func(c *webrtc.ICECandidate) {
+		if c == nil {
+			return
+		}
+		if s.met != nil {
+			s.met.RecordCandidate(c.Typ.String())
+		}
 	})
 
 	go func() {
