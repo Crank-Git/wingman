@@ -218,7 +218,7 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metrics.Metrics) (*peer.Session, error) {
 	m.ConnectionAttempted()
 	start := time.Now()
-	sess := peer.NewSession(role, cfg)
+	sess := peer.NewSession(role, cfg).WithMetrics(m)
 	if _, err := sess.Start(ctx); err != nil {
 		m.ConnectionFailed()
 		m.Failure()

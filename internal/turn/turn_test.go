@@ -16,6 +16,10 @@ func TestParseValidURIs(t *testing.T) {
 		{"turn:example.com:3478", "turn", "example.com", 3478},
 		{"turns:turn.example.org:443", "turns", "turn.example.org", 443},
 		{"turn:192.168.1.5:3478", "turn", "192.168.1.5", 3478},
+		// IPv6 literals keep their brackets in the normalized URI so the result
+		// stays parseable (a bare "::1" would become the unparseable ":::1").
+		{"stun:[::1]:3478", "stun", "[::1]", 3478},
+		{"turn:[2001:db8::1]:3478", "turn", "[2001:db8::1]", 3478},
 		// A missing port defaults to the conventional TURN port.
 		{"turn:example.com", "turn", "example.com", 3478},
 	}
@@ -34,6 +38,22 @@ func TestParseValidURIs(t *testing.T) {
 		}
 		if s.Username != "user" || s.Password != "pass" {
 			t.Fatalf("Parse(%q): credentials = %q/%q", tc.uri, s.Username, s.Password)
+		}
+	}
+}
+
+// TestParseIPv6URIRoundTrips verifies that a normalized IPv6 URI is itself
+// parseable. This catches the regression where the host was emitted without
+// brackets ("stun:::1"), which is unparseable and would be dropped by the ICE
+// engine instead of yielding srflx/relay candidates.
+func TestParseIPv6URIRoundTrips(t *testing.T) {
+	for _, uri := range []string{"stun:[::1]:3478", "turn:[2001:db8::1]:3478"} {
+		s, err := Parse(uri, "u", "p")
+		if err != nil {
+			t.Fatalf("Parse(%q): %v", uri, err)
+		}
+		if _, err := Parse(s.URIs[0], "u", "p"); err != nil {
+			t.Fatalf("re-parsing normalized URI %q: %v", s.URIs[0], err)
 		}
 	}
 }

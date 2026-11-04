@@ -196,31 +196,34 @@ func (m *Metrics) Text() string {
 	snap := m.Snapshot()
 	var b strings.Builder
 
-	counter := func(name, help string, v int64) {
-		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s counter\n%s %d\n", name, help, name, name, v)
+	counter := func(name, help string, v float64) {
+		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s counter\n%s %v\n", name, help, name, name, v)
 	}
 	gauge := func(name, help string, v float64) {
 		fmt.Fprintf(&b, "# HELP %s %s\n# TYPE %s gauge\n%s %v\n", name, help, name, name, v)
 	}
 
-	counter("wingman_connections_attempted", "Total connection handshake attempts.", snap.ConnectionsAttempted)
-	counter("wingman_connections_succeeded", "Total successful connection handshakes.", snap.ConnectionsSucceeded)
-	counter("wingman_connections_failed", "Total failed connection handshakes.", snap.ConnectionsFailed)
-	counter("wingman_failures", "Total recorded failures.", snap.Failures)
+	counter("wingman_connections_attempted", "Total connection handshake attempts.", float64(snap.ConnectionsAttempted))
+	counter("wingman_connections_succeeded", "Total successful connection handshakes.", float64(snap.ConnectionsSucceeded))
+	counter("wingman_connections_failed", "Total failed connection handshakes.", float64(snap.ConnectionsFailed))
+	counter("wingman_failures", "Total recorded failures.", float64(snap.Failures))
 
 	for _, kind := range sortedKeys(snap.Candidates) {
 		counter(fmt.Sprintf("wingman_candidates_%s", kind),
-			fmt.Sprintf("Number of %s ICE candidates gathered.", kind), snap.Candidates[kind])
+			fmt.Sprintf("Number of %s ICE candidates gathered.", kind), float64(snap.Candidates[kind]))
 	}
 
 	if snap.HandshakeCount > 0 {
-		gauge("wingman_handshake_latency_total_seconds", "Cumulative handshake latency in seconds.",
+		// A cumulative latency is a counter by the Prometheus data model, so it
+		// must be typed counter (the _total suffix is reserved for counters),
+		// not gauge.
+		counter("wingman_handshake_latency_total_seconds", "Cumulative handshake latency in seconds.",
 			nanosToSeconds(snap.HandshakeLatencyTotal))
 		gauge("wingman_handshake_latency_max_seconds", "Longest handshake latency in seconds.",
 			nanosToSeconds(snap.HandshakeLatencyMax))
 		gauge("wingman_handshake_latency_avg_seconds", "Average handshake latency in seconds.",
 			nanosToSeconds(snap.HandshakeLatencyAvg))
-		counter("wingman_handshake_count", "Number of handshakes whose latency was recorded.", snap.HandshakeCount)
+		counter("wingman_handshake_count", "Number of handshakes whose latency was recorded.", float64(snap.HandshakeCount))
 	}
 
 	return b.String()

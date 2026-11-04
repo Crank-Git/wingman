@@ -140,6 +140,22 @@ func TestTextRendered(t *testing.T) {
 	}
 }
 
+// TestHandshakeLatencyTotalIsCounter ensures the cumulative handshake latency is
+// typed as a counter, not a gauge. The Prometheus data model reserves the
+// _total suffix for counters, so emitting it as a gauge violates the format.
+func TestHandshakeLatencyTotalIsCounter(t *testing.T) {
+	m := New()
+	m.RecordHandshakeLatency(12 * time.Millisecond)
+
+	out := m.Text()
+	if !strings.Contains(out, "# TYPE wingman_handshake_latency_total_seconds counter") {
+		t.Fatalf("handshake latency total must be a counter:\n%s", out)
+	}
+	if strings.Contains(out, "# TYPE wingman_handshake_latency_total_seconds gauge") {
+		t.Fatalf("handshake latency total must not be a gauge:\n%s", out)
+	}
+}
+
 // TestTextFormatIsValid exercises the numeric rendering path.
 func TestTextFormatIsValid(t *testing.T) {
 	m := New()

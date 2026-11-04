@@ -67,6 +67,14 @@ func Parse(uri, username, password string) (*Server, error) {
 		}
 	}
 
+	// Re-bracket IPv6 literals so the normalized URI stays parseable: a bare
+	// "::1" in the host position would otherwise become the unparseable
+	// "turn:::1". Hostnames and IPv4 addresses never contain a colon, so this
+	// only affects IPv6 literals.
+	if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+
 	return &Server{
 		URIs:     []string{fmt.Sprintf("%s:%s:%d", scheme, host, p)},
 		Username: username,
@@ -143,8 +151,9 @@ func ParseServers(uris []string, username, password string) ([]Server, error) {
 }
 
 // splitHostPort splits "host:port" into its parts. hasPort reports whether a
-// port was present at all (an omitted port falls back to defaultPort). IPv6
-// hosts are wrapped in brackets.
+// port was present at all (an omitted port falls back to defaultPort). The
+// returned host is bare (IPv6 brackets stripped); callers that emit a URI must
+// re-bracket IPv6 literals (see Parse).
 func splitHostPort(rest string) (host, portStr string, hasPort bool) {
 	if h, p, err := net.SplitHostPort(rest); err == nil {
 		return h, p, true
