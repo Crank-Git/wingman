@@ -80,6 +80,9 @@ func (t *WriteOverQuery) writeFragment(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
+	if resp == nil {
+		return fmt.Errorf("wingman: fragment write %s: nil resolver response", name)
+	}
 	if resp.Rcode != dns.RcodeSuccess {
 		return &PublishError{Name: name, Rcode: resp.Rcode}
 	}
@@ -140,6 +143,9 @@ func (t *WriteOverQuery) pollOnce(ctx context.Context, pollName string) (frags [
 	if err != nil {
 		return nil, false, err
 	}
+	if resp == nil {
+		return nil, false, fmt.Errorf("wingman: poll %s: nil resolver response", pollName)
+	}
 	switch resp.Rcode {
 	case dns.RcodeSuccess:
 		// fall through to reassemble the fragments
@@ -157,9 +163,15 @@ func (t *WriteOverQuery) pollOnce(ctx context.Context, pollName string) (frags [
 		if !ok || len(txt.Txt) != 1 {
 			continue
 		}
-		parsed, perr := sig.ParseRendezvousName(strings.TrimSuffix(txt.Txt[0], "."))
+		if canonicalReplyName(txt.Hdr.Name) != canonicalReplyName(pollName) {
+			return nil, false, fmt.Errorf("wingman: poll %s: TXT owner identity mismatch", pollName)
+		}
+		parsed, perr := sig.ParseRendezvousName(canonicalReplyName(txt.Txt[0]))
 		if perr != nil {
 			continue
+		}
+		if canonicalReplyName(sig.PollName(parsed.Zone, parsed.Room, parsed.Kind)) != canonicalReplyName(pollName) {
+			return nil, false, fmt.Errorf("wingman: poll %s: fragment identity mismatch", pollName)
 		}
 		payload, derr := sig.DecodeLabel(parsed.Payload)
 		if derr != nil {
@@ -168,6 +180,10 @@ func (t *WriteOverQuery) pollOnce(ctx context.Context, pollName string) (frags [
 		frags = append(frags, sig.Fragment{Seq: parsed.Seq, Total: parsed.Total, Data: payload})
 	}
 	return frags, true, nil
+}
+
+func canonicalReplyName(name string) string {
+	return strings.ToLower(strings.TrimSuffix(name, "."))
 }
 
 // wait sleeps or returns early on ctx cancellation.

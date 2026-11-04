@@ -185,7 +185,7 @@ func TestPollOnceBadPayload(t *testing.T) {
 		Hdr: dns.RR_Header{Name: "room.offer.sig.example.com", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
 		Txt: []string{"room.0-1.%%%%.offer.sig.example.com"},
 	})
-	tr := &WriteOverQuery{Resolver: &fixedResolver{resp: resp}}
+	tr := &WriteOverQuery{Resolver: &fixedResolver{resp: resp}, Zone: "example.com"}
 	if _, err := tr.Poll(ctx, "room", sig.Offer); err == nil {
 		t.Fatal("expected error for undecodable payload")
 	}
@@ -197,7 +197,7 @@ func TestPollOnceMalformedAnswer(t *testing.T) {
 	defer cancel()
 	// NOERROR but with a single unparseable fragment answer: pollOnce skips it,
 	// so the poller reassembles an empty set and reassembly fails.
-	tr := &WriteOverQuery{Resolver: &fixedResolver{resp: malformedAnswer()}}
+	tr := &WriteOverQuery{Resolver: &fixedResolver{resp: malformedAnswer()}, Zone: "example.com"}
 	if _, err := tr.Poll(ctx, "room", sig.Offer); err == nil {
 		t.Fatal("expected error for malformed answer")
 	}
