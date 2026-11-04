@@ -31,6 +31,9 @@ const iceGatherTimeout = 10 * time.Second
 // ErrAlreadyStarted reports a second startup attempt on a Session.
 var ErrAlreadyStarted = errors.New("peer: session already started")
 
+// ErrClosed reports a startup attempt after Close.
+var ErrClosed = errors.New("peer: session closed")
+
 // peerConn is the subset of *webrtc.PeerConnection used by the handshake. It is
 // a seam: newPeerConnection is a package variable so tests can substitute a
 // fake and drive the failure branches (CreateDataChannel/CreateOffer/SetLocal
@@ -96,14 +99,17 @@ type MessageHandler func(data []byte)
 // Session drives a single offer/answer/ICE handshake and owns the resulting
 // data channel. Start permits one attempt, including an attempt that fails.
 // Concurrent Start calls return ErrAlreadyStarted after the first call reserves startup.
+// After a successful Start, the caller must call Close when it finishes with the channel.
 type Session struct {
 	cfg   Config
 	role  Role
 	label string
 
-	// mu guards started, pc, dataChan, onMessage, and met.
+	// mu guards started, closed, cancel, pc, dataChan, onMessage, and met.
 	mu        sync.Mutex
 	started   bool
+	closed    bool
+	cancel    context.CancelFunc
 	pc        peerConn
 	dataChan  *webrtc.DataChannel
 	onMessage MessageHandler
@@ -166,41 +172,56 @@ func (s *Session) SendText(text string) error {
 // Start runs the full handshake and blocks until the data channel is open or
 // ctx is canceled. It returns the open data channel on success.
 // An invalid role fails before allocation. A repeated call returns ErrAlreadyStarted.
-func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
+func (s *Session) Start(ctx context.Context) (channel *webrtc.DataChannel, startErr error) {
 	if err := s.reserveStart(); err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	defer func() {
+		if startErr != nil {
+			// Cleanup must preserve the handshake cause.
+			_ = s.Close()
+		}
+	}()
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil, ErrClosed
+	}
+	s.cancel = cancel
+	s.mu.Unlock()
 	pc, err := newPeerConnection(configuration(s.cfg))
 	if err != nil {
 		return nil, fmt.Errorf("peer: new peer connection: %w", err)
 	}
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		// Close can precede publication while allocation is in progress.
+		_ = pc.Close()
+		return nil, ErrClosed
+	}
 	s.pc = pc
 	s.mu.Unlock()
 
 	done := make(chan error, 1)
-	// signal records the outcome without touching the peer connection. On
-	// success the channel must stay open so the caller can use it.
+	var outcome sync.Once
+	// The first outcome remains available until Start receives it.
 	signal := func(err error) {
-		select {
-		case <-done:
-		default:
-			done <- err
-		}
-	}
-	// fail records an error and tears the connection down. Signal first: closing
-	// the peer connection fires OnConnectionStateChange(Closed), which would
-	// otherwise race this signal and win the buffered channel, masking the real
-	// handshake error with "connection closed".
-	fail := func(err error) {
-		signal(err)
-		_ = pc.Close()
+		outcome.Do(func() { done <- err })
 	}
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
+		s.mu.Lock()
+		closed := s.closed
+		s.mu.Unlock()
+		if closed {
+			return
+		}
 		switch state {
 		case webrtc.PeerConnectionStateFailed, webrtc.PeerConnectionStateClosed:
-			fail(fmt.Errorf("peer: connection %s", state))
+			signal(fmt.Errorf("peer: connection %s", state))
 		}
 	})
 
@@ -224,7 +245,9 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 		}
 	})
 
+	finished := make(chan struct{})
 	go func() {
+		defer close(finished)
 		var handshakeErr error
 		switch s.role {
 		case RoleOfferer:
@@ -233,7 +256,7 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 			handshakeErr = s.runAnswerer(ctx, pc)
 		}
 		if handshakeErr != nil {
-			fail(handshakeErr)
+			signal(handshakeErr)
 			return
 		}
 		select {
@@ -242,8 +265,12 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 			// connection: the caller needs the channel to stay alive.
 			signal(nil)
 		case <-ctx.Done():
-			fail(ctx.Err())
+			signal(ctx.Err())
 		}
+	}()
+	defer func() {
+		cancel()
+		<-finished
 	}()
 
 	if err := <-done; err != nil {
@@ -265,8 +292,37 @@ func (s *Session) reserveStart() error {
 	if s.started {
 		return ErrAlreadyStarted
 	}
+	if s.closed {
+		return ErrClosed
+	}
 	// Allocation can fail, but the Session still owns this attempt.
 	s.started = true
+	return nil
+}
+
+// Close releases the owned connection once and cancels an active handshake.
+// Close before Start prevents allocation. Repeated calls succeed without allocation.
+// If allocation is active, Start closes its connection before it returns.
+// A connection close failure returns its original cause.
+func (s *Session) Close() error {
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	pc, cancel := s.pc, s.cancel
+	s.pc, s.dataChan, s.cancel = nil, nil, nil
+	s.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	// Pion can invoke callbacks from Close, so the Session lock must be free.
+	if pc != nil {
+		if err := pc.Close(); err != nil {
+			return fmt.Errorf("peer: close connection: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -368,7 +424,9 @@ func (s *Session) waitGathering(ctx context.Context, pc peerConn) error {
 // setDataChannel records the session's data channel.
 func (s *Session) setDataChannel(dc *webrtc.DataChannel) {
 	s.mu.Lock()
-	s.dataChan = dc
+	if !s.closed {
+		s.dataChan = dc
+	}
 	s.mu.Unlock()
 }
 
