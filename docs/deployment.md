@@ -192,7 +192,9 @@ This guide does not change host firewall rules or relay allocation behavior.
 
 Ctrl-C cancels a peer or server. SIGTERM also stops the server.
 The server closes its DNS, TLS, metrics, and TURN resources during shutdown.
-Stop both peers before you stop the server. Remove disposable credential copies on every host after the test:
+1. Stop each peer.
+2. Stop the server.
+3. Remove disposable credential copies on every host after the test:
 
 ```sh
 rm -rf -- "$WINGMAN_FILES"
