@@ -20,8 +20,12 @@ func TestParseValidURIs(t *testing.T) {
 		// stays parseable (a bare "::1" would become the unparseable ":::1").
 		{"stun:[::1]:3478", "stun", "[::1]", 3478},
 		{"turn:[2001:db8::1]:3478", "turn", "[2001:db8::1]", 3478},
-		// A missing port defaults to the conventional TURN port.
 		{"turn:example.com", "turn", "example.com", 3478},
+		{"stun:example.com", "stun", "example.com", 3478},
+		{"turns:example.com", "turns", "example.com", 5349},
+		{" TURNS:192.0.2.1 ", "turns", "192.0.2.1", 5349},
+		{"turn:example.com:5349", "turn", "example.com", 5349},
+		{"turns:example.com:3478", "turns", "example.com", 3478},
 	}
 	for _, tc := range cases {
 		s, err := Parse(tc.uri, "user", "pass")
@@ -144,6 +148,40 @@ func TestParseServers(t *testing.T) {
 	}
 	if len(servers) != 2 {
 		t.Fatalf("ParseServers: got %d, want 2", len(servers))
+	}
+}
+
+func TestParseServersPreservesSchemePorts(t *testing.T) {
+	uris := []string{"turns:relay.example", "turn:relay.example", "turns:relay.example:443", "turn:relay.example:5349"}
+	want := []string{"turns:relay.example:5349", "turn:relay.example:3478", "turns:relay.example:443", "turn:relay.example:5349"}
+	servers, err := ParseServers(uris, "user", "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(servers) != len(want) {
+		t.Fatalf("got %d servers, want %d", len(servers), len(want))
+	}
+	for i, server := range servers {
+		if len(server.URIs) != 1 || server.URIs[0] != want[i] {
+			t.Errorf("server %d: URIs = %v, want [%s]", i, server.URIs, want[i])
+		}
+		if server.Username != "user" || server.Password != "password" {
+			t.Errorf("server %d: credentials change", i)
+		}
+	}
+}
+
+func TestParseRejectsTransportQueries(t *testing.T) {
+	for _, uri := range []string{
+		"turn:relay.example?transport=udp",
+		"turn:relay.example:3478?transport=tcp",
+		"turns:relay.example?transport=tcp",
+		"turns:relay.example:5349?transport=udp",
+		"turns:relay.example?transport=invalid",
+	} {
+		if _, err := Parse(uri, "user", "password"); err == nil {
+			t.Errorf("Parse(%q): want an error", uri)
+		}
 	}
 }
 
