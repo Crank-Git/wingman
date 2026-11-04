@@ -1,11 +1,15 @@
 package https
 
 import (
+	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/Crank-Git/wingman/internal/sig"
 )
 
 type blockedConsumeWriter struct {
@@ -15,13 +19,60 @@ type blockedConsumeWriter struct {
 	err     error
 }
 
-func (w *blockedConsumeWriter) Write(body []byte) (int, error) {
+func (w *blockedConsumeWriter) WriteHeader(code int) {
 	close(w.entered)
 	<-w.release
+	w.ResponseRecorder.WriteHeader(code)
+}
+
+func (w *blockedConsumeWriter) Write(body []byte) (int, error) {
 	if w.err != nil {
 		return 0, w.err
 	}
 	return w.ResponseRecorder.Write(body)
+}
+
+func TestHandlerConsumesOnceOverTLS(t *testing.T) {
+	srv := httptest.NewTLSServer(NewHandler())
+	t.Cleanup(srv.Close)
+	tr := &Transport{BaseURL: srv.URL, Client: srv.Client(), PollRetries: 1}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := tr.Publish(ctx, "consume", sig.Offer, []byte("old")); err != nil {
+		t.Fatal(err)
+	}
+	results := make(chan error, 2)
+	start := make(chan struct{})
+	for i := 0; i < 2; i++ {
+		go func() {
+			<-start
+			body, err := tr.Poll(ctx, "consume", sig.Offer)
+			if err == nil && string(body) != "old" {
+				err = errors.New("GET returns a different message")
+			}
+			results <- err
+		}()
+	}
+	close(start)
+	successes := 0
+	for i := 0; i < 2; i++ {
+		err := <-results
+		var miss *PollError
+		if err == nil {
+			successes++
+		} else if !errors.As(err, &miss) {
+			t.Fatal(err)
+		}
+	}
+	if successes != 1 {
+		t.Fatalf("successful polls = %d, want 1", successes)
+	}
+	if err := tr.Publish(ctx, "consume", sig.Offer, []byte("new")); err != nil {
+		t.Fatal(err)
+	}
+	if body, err := tr.Poll(ctx, "consume", sig.Offer); err != nil || string(body) != "new" {
+		t.Fatalf("replacement poll = %q, %v", body, err)
+	}
 }
 
 func startBlockedConsume(t *testing.T, h *Handler, err error) (*blockedConsumeWriter, func()) {
