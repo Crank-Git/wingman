@@ -2,7 +2,7 @@
 id: server-operations
 feature: Deployable servers and authentication
 epic: Epic 4: Server operations
-status: issued
+status: built
 issues: [33, 34, 35, 36, 37, 38, 39]
 mockups: [mockups/09-server-operations.html]
 ---
@@ -71,12 +71,12 @@ Bind failures stop the process instead of reporting a healthy service.
 Direct UDP and TCP reachability remains necessary. Document this limitation rather than claiming recursive DNS compatibility.
 
 ## Acceptance criteria
-- [ ] FR-server-operations-1: Two local network namespaces can reach the configured DNS listener.
-- [ ] FR-server-operations-2: Queries outside the configured zone cannot read or mutate storage.
-- [ ] FR-server-operations-3: Wrong-key and unsigned requests cannot access an authenticated DNS listener.
-- [ ] FR-server-operations-4: A TLS client completes a signaling roundtrip against the bundled listener.
-- [ ] FR-server-operations-5: One write changes the server write counter.
-- [ ] FR-server-operations-6: The guide demonstrates two peers, cancellation, firewall ports, and TURN fallback.
+- [x] FR-server-operations-1: Two local network namespaces can reach the configured DNS listener.
+- [x] FR-server-operations-2: Queries outside the configured zone cannot read or mutate storage.
+- [x] FR-server-operations-3: Wrong-key and unsigned requests cannot access an authenticated DNS listener.
+- [x] FR-server-operations-4: A TLS client completes a signaling roundtrip against the bundled listener.
+- [x] FR-server-operations-5: One write changes the server write counter.
+- [x] FR-server-operations-6: The guide demonstrates two peers, cancellation, firewall ports, and TURN fallback.
 
 ## Out of scope
 No cloud provisioning, ACME automation, browser UI, recursive DNS tunneling, or automatic firewall modification.

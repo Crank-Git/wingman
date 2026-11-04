@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: Deployable servers and authentication</h1>
-<p class="meta">Epic 4: Server operations &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 4: Server operations &nbsp; <span class="badge">built</span></p>
 <h2 id="server-operations-deployable-servers-and-authentication">Deployable servers and authentication</h2>
 <h3 id="server-operations-purpose">Purpose</h3>
 <p>Expose explicit server listeners with authentication and usable operational signals.</p>
@@ -214,17 +214,17 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Wrong keys, unsigned remote requests, expired signatures, certificate failures, and listener conflicts produce explicit errors. Bind failures stop the process instead of reporting a healthy service. Direct UDP and TCP reachability remains necessary. Document this limitation rather than claiming recursive DNS compatibility.</p>
 <h3 id="server-operations-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-server-operations-1: Two local network namespaces can reach the configured DNS listener.
+<li>[x] FR-server-operations-1: Two local network namespaces can reach the configured DNS listener.
 </li>
-<li>[ ] FR-server-operations-2: Queries outside the configured zone cannot read or mutate storage.
+<li>[x] FR-server-operations-2: Queries outside the configured zone cannot read or mutate storage.
 </li>
-<li>[ ] FR-server-operations-3: Wrong-key and unsigned requests cannot access an authenticated DNS listener.
+<li>[x] FR-server-operations-3: Wrong-key and unsigned requests cannot access an authenticated DNS listener.
 </li>
-<li>[ ] FR-server-operations-4: A TLS client completes a signaling roundtrip against the bundled listener.
+<li>[x] FR-server-operations-4: A TLS client completes a signaling roundtrip against the bundled listener.
 </li>
-<li>[ ] FR-server-operations-5: One write changes the server write counter.
+<li>[x] FR-server-operations-5: One write changes the server write counter.
 </li>
-<li>[ ] FR-server-operations-6: The guide demonstrates two peers, cancellation, firewall ports, and TURN fallback.
+<li>[x] FR-server-operations-6: The guide demonstrates two peers, cancellation, firewall ports, and TURN fallback.
 </li>
 </ul>
 <h3 id="server-operations-out-of-scope">Out of scope</h3>

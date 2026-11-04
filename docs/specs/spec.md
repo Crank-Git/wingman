@@ -122,7 +122,7 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 | DNS isolation and resource limits | [dns-repairs](features/06-dns-repairs.md) | built | Epic 1: DNS repairs |
 | HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | built | Epic 2: HTTPS repairs |
 | Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | built | Epic 3: Peer repairs |
-| Deployable servers and authentication | [server-operations](features/09-server-operations.md) | issued | Epic 4: Server operations |
+| Deployable servers and authentication | [server-operations](features/09-server-operations.md) | built | Epic 4: Server operations |
 | RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | issued | Epic 5: DynUpdate |
 | Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | issued | Epic 6: Diagnostics |
 
