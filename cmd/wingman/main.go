@@ -22,12 +22,18 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/pion/webrtc/v4"
+
 	"github.com/Crank-Git/wingman/internal/dns"
+	"github.com/Crank-Git/wingman/internal/https"
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/peer"
 	"github.com/Crank-Git/wingman/internal/sig"
+	"github.com/Crank-Git/wingman/internal/turn"
 )
 
 // defaultZone is the DNS zone peers query when none is supplied.
@@ -39,6 +45,16 @@ const defaultDialTimeout = 5 * time.Second
 // defaultPollInterval is the delay between poll attempts while a peer waits for
 // the other side's SDP.
 const defaultPollInterval = 50 * time.Millisecond
+
+// stringSliceFlag is a flag.Value that accumulates repeated --flags into a
+// slice, used for the repeatable --turn server list.
+type stringSliceFlag []string
+
+// String implements flag.Value; it joins the accumulated values for help output.
+func (s *stringSliceFlag) String() string { return strings.Join(*s, ",") }
+
+// Set implements flag.Value; it appends one value to the slice.
+func (s *stringSliceFlag) Set(v string) error { *s = append(*s, v); return nil }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -86,10 +102,16 @@ Usage:
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
 
 offer/answer flags:
-  --addr 127.0.0.1:PORT   DNS server address printed by 'serve' (required)
+  --addr 127.0.0.1:PORT   DNS server address printed by 'serve' (required for --signaling dns)
   --room NAME             signaling room shared by both peers (required)
   --zone example.com      authoritative DNS zone (default "example.com")
   --label wingman         data channel label (default "wingman")
+  --signaling dns|https   signaling transport (default "dns")
+  --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
+  --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
+  --user NAME             TURN username for --turn servers
+  --pass PASS             TURN password for --turn servers
+  --metrics               print connection metrics (Prometheus format) on exit
 `)
 }
 
@@ -114,44 +136,132 @@ func runServe(ctx context.Context, args []string) error {
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	addr  string
-	zone  string
-	room  string
-	label string
+	addr         string
+	zone         string
+	room         string
+	label        string
+	signaling    string
+	signalingURL string
+	turn         []string
+	user         string
+	pass         string
+	metrics      bool
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
 func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required)")
+	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for --signaling dns)")
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone")
 	room := fs.String("room", "", "signaling room shared with the other peer (required)")
 	label := fs.String("label", "wingman", "data channel label")
+	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
+	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
+	var turnServers stringSliceFlag
+	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
+	user := fs.String("user", "", "TURN username for --turn servers")
+	pass := fs.String("pass", "", "TURN password for --turn servers")
+	metricsFlag := fs.Bool("metrics", false, "print connection metrics (Prometheus format) on exit")
 	if err := fs.Parse(args); err != nil {
 		return peerOpts{}, err
 	}
-	if *addr == "" || *room == "" {
-		return peerOpts{}, fmt.Errorf("%s: --addr and --room are required", name)
+	if *room == "" {
+		return peerOpts{}, fmt.Errorf("%s: --room is required", name)
 	}
-	return peerOpts{addr: *addr, zone: *zone, room: *room, label: *label}, nil
+	if *signaling == "dns" && *addr == "" {
+		return peerOpts{}, fmt.Errorf("%s: --addr is required for --signaling dns", name)
+	}
+	if *signaling == "https" && strings.TrimSpace(*signalingURL) == "" {
+		return peerOpts{}, fmt.Errorf("%s: --signaling-url is required for --signaling https", name)
+	}
+	return peerOpts{
+		addr: *addr, zone: *zone, room: *room, label: *label,
+		signaling: *signaling, signalingURL: *signalingURL,
+		turn: turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+	}, nil
 }
 
-// runPeer connects a session for the given role and runs the send/receive loop.
+// runPeer builds the signaling transport and ICE servers from opts, connects a
+// session for the given role (recording metrics), and runs the send/receive
+// loop. It prints the metrics snapshot when opts.metrics is set.
 func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) error {
-	var (
-		sess *peer.Session
-		err  error
-	)
-	if role == peer.RoleOfferer {
-		sess, err = connectOffer(ctx, opts.addr, opts.zone, opts.room, opts.label)
-	} else {
-		sess, err = connectAnswer(ctx, opts.addr, opts.zone, opts.room, opts.label)
-	}
+	transport, err := buildTransport(opts)
 	if err != nil {
 		return err
 	}
-	return chat(ctx, sess, role, in, out)
+	iceServers, err := buildICEServers(opts)
+	if err != nil {
+		return err
+	}
+	m := metrics.New()
+	sess, err := startSession(ctx, role, peer.Config{
+		Room:       opts.room,
+		Zone:       opts.zone,
+		Transport:  transport,
+		ICEServers: iceServers,
+		Label:      opts.label,
+	}, m)
+	if err != nil {
+		return err
+	}
+	err = chat(ctx, sess, role, in, out)
+	if opts.metrics {
+		fmt.Fprint(out, m.Text())
+	}
+	return err
+}
+
+// startSession creates a session for role with cfg, runs the handshake, and
+// records the outcome in m. On success it records the handshake latency; on
+// failure it marks the attempt failed and records a failure.
+func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metrics.Metrics) (*peer.Session, error) {
+	m.ConnectionAttempted()
+	start := time.Now()
+	sess := peer.NewSession(role, cfg)
+	if _, err := sess.Start(ctx); err != nil {
+		m.ConnectionFailed()
+		m.Failure()
+		return nil, err
+	}
+	m.ConnectionSucceeded()
+	m.RecordHandshakeLatency(time.Since(start))
+	return sess, nil
+}
+
+// buildTransport selects the signaling transport from opts. DNS is the default;
+// https requires a --signaling-url.
+func buildTransport(opts peerOpts) (sig.Transport, error) {
+	switch opts.signaling {
+	case "", "dns":
+		return newTransport(opts.addr, opts.zone), nil
+	case "https":
+		return newHTTPSTransport(opts.signalingURL)
+	default:
+		return nil, fmt.Errorf("unknown signaling %q (want dns or https)", opts.signaling)
+	}
+}
+
+// newHTTPSTransport builds an HTTPS transport from the given base URL.
+func newHTTPSTransport(baseURL string) (sig.Transport, error) {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil, errors.New("https: --signaling-url is required for --signaling https")
+	}
+	return &https.Transport{BaseURL: strings.TrimRight(baseURL, "/")}, nil
+}
+
+// buildICEServers converts the parsed --turn servers into a pion ICE server
+// slice. With no --turn servers it returns a nil slice (host candidates only).
+func buildICEServers(opts peerOpts) ([]webrtc.ICEServer, error) {
+	if len(opts.turn) == 0 {
+		return nil, nil
+	}
+	servers, err := turn.ParseServers(opts.turn, opts.user, opts.pass)
+	if err != nil {
+		return nil, err
+	}
+	cfg := turn.Config{Servers: servers}
+	return cfg.ICEServers(), nil
 }
 
 // runOffer runs the offerer subcommand.
@@ -191,32 +301,27 @@ func newTransport(srvAddr, zone string) sig.Transport {
 	}
 }
 
-// connectOffer completes the offerer handshake and returns the session.
-func connectOffer(ctx context.Context, srvAddr, zone, room, label string) (*peer.Session, error) {
-	sess := peer.NewSession(peer.RoleOfferer, peer.Config{
+// connectOffer completes the offerer handshake over DNS and returns the session.
+// It is the DNS-only path used by tests; runPeer builds the full path via
+// startSession.
+func connectOffer(ctx context.Context, addr, zone, room, label string) (*peer.Session, error) {
+	return startSession(ctx, peer.RoleOfferer, peer.Config{
 		Room:      room,
 		Zone:      zone,
-		Transport: newTransport(srvAddr, zone),
+		Transport: newTransport(addr, zone),
 		Label:     label,
-	})
-	if _, err := sess.Start(ctx); err != nil {
-		return nil, err
-	}
-	return sess, nil
+	}, metrics.New())
 }
 
-// connectAnswer completes the answerer handshake and returns the session.
-func connectAnswer(ctx context.Context, srvAddr, zone, room, label string) (*peer.Session, error) {
-	sess := peer.NewSession(peer.RoleAnswerer, peer.Config{
+// connectAnswer completes the answerer handshake over DNS and returns the
+// session. See connectOffer.
+func connectAnswer(ctx context.Context, addr, zone, room, label string) (*peer.Session, error) {
+	return startSession(ctx, peer.RoleAnswerer, peer.Config{
 		Room:      room,
 		Zone:      zone,
-		Transport: newTransport(srvAddr, zone),
+		Transport: newTransport(addr, zone),
 		Label:     label,
-	})
-	if _, err := sess.Start(ctx); err != nil {
-		return nil, err
-	}
-	return sess, nil
+	}, metrics.New())
 }
 
 // chat runs a simple send/receive loop over the session's data channel. It
