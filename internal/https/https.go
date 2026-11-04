@@ -259,6 +259,7 @@ type entry struct {
 // POST accepts at most 16 KiB per message. Larger bodies return 413 without storage.
 // Capacity is 1024 entries and 16 MiB of payloads. Excess entries or bytes return 503.
 // GET consumes a stored message. Authorized access sweeps messages older than TTL.
+// A failed response write still consumes the message. Start a new room exchange after a lost response.
 // Rooms are case-sensitive single labels of 1 to 63 bytes without dots,
 // backslash escapes, or surrounding whitespace. Underscores and edge hyphens are valid.
 type Handler struct {
@@ -368,6 +369,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		h.mu.Lock()
 		e, ok := h.msgs[key]
+		h.removeLocked(key)
 		h.mu.Unlock()
 		if !ok {
 			http.Error(w, "https: not found", http.StatusNotFound)
@@ -375,12 +377,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/sdp")
 		w.WriteHeader(http.StatusOK)
+		// A failed delivery cannot restore the message without risking duplicate consumption.
 		_, _ = w.Write(e.data)
-		// SDP is one-shot: remove it once served so a retried GET does not
-		// return a stale message.
-		h.mu.Lock()
-		h.removeLocked(key)
-		h.mu.Unlock()
 
 	default:
 		w.Header().Set("Allow", "GET, POST")

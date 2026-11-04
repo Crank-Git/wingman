@@ -52,6 +52,11 @@ For local development, `--signaling-allow-loopback-http` permits HTTP to loopbac
 The Go transport exposes the same option as `https.Transport.AllowLoopbackHTTP`.
 For example, use `--signaling https --signaling-url http://127.0.0.1:8080 --signaling-allow-loopback-http` with a local handler.
 
+The HTTPS handler consumes each message before it writes the response.
+Concurrent GET requests for one message return one 200 response; the other requests return 404.
+A failed response write still consumes the message.
+If a peer loses the response, start a new room exchange.
+
 ### Polling
 
 Peers poll the authoritative server for not-yet-published names. To keep polling
