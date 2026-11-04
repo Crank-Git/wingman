@@ -1,6 +1,10 @@
 package sig
 
-import "context"
+import (
+	"bytes"
+	"context"
+	"sync"
+)
 
 // Transport carries SDP fragments between peers over a signaling channel. Two
 // implementations are provided: WriteOverQuery (the default, which encodes
@@ -17,7 +21,10 @@ type Transport interface {
 
 // StubTransport is an in-memory Transport used for unit tests and for local
 // single-host experiments. It stores one message per (room, kind).
+// Concurrent Publish and Poll calls are safe. Each call copies message bytes.
 type StubTransport struct {
+	// mu protects store and its message bytes from concurrent access.
+	mu    sync.RWMutex
 	store map[string][]byte
 }
 
@@ -28,17 +35,21 @@ func NewStubTransport() *StubTransport {
 
 // Publish stores msg keyed by (room, kind).
 func (s *StubTransport) Publish(_ context.Context, room string, k Kind, msg []byte) error {
-	s.store[key(room, k)] = msg
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.store[key(room, k)] = bytes.Clone(msg)
 	return nil
 }
 
 // Poll returns the stored message for (room, kind), or ErrNotFound if none.
 func (s *StubTransport) Poll(_ context.Context, room string, k Kind) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	msg, ok := s.store[key(room, k)]
 	if !ok {
 		return nil, ErrNotFound
 	}
-	return msg, nil
+	return bytes.Clone(msg), nil
 }
 
 // key builds the store key for a room/kind pair.
