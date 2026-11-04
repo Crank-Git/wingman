@@ -70,16 +70,16 @@ func TestServerHandlePollEmpty(t *testing.T) {
 func TestServerHandlePollInvalidName(t *testing.T) {
 	srv := newTestServer(t)
 	resp := serveQuery(t, srv, "garbage.name")
-	if resp.Rcode != dns.RcodeNameError {
-		t.Fatalf("rcode = %d, want NXDOMAIN", resp.Rcode)
+	if resp.Rcode != dns.RcodeFormatError {
+		t.Fatalf("rcode = %d, want FORMERR", resp.Rcode)
 	}
 }
 
 func TestServerHandlePollInvalidKind(t *testing.T) {
 	srv := newTestServer(t)
 	resp := serveQuery(t, srv, "room.badopt.sig.example.com")
-	if resp.Rcode != dns.RcodeNameError {
-		t.Fatalf("rcode = %d, want NXDOMAIN", resp.Rcode)
+	if resp.Rcode != dns.RcodeFormatError {
+		t.Fatalf("rcode = %d, want FORMERR", resp.Rcode)
 	}
 }
 
