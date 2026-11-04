@@ -38,5 +38,6 @@ for ns in server peer-a peer-b; do
 done
 case "${1:-}" in
   dns) source /repo/scripts/namespace/dns.sh ;;
+  readiness) source /repo/scripts/namespace/readiness.sh ;;
   *) echo 'unknown namespace scenario' >&2; exit 1 ;;
 esac

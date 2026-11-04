@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [[ $# != 2 || $1 != --scenario || $2 != dns ]]; then
-  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns' >&2
+if [[ $# != 2 || $1 != --scenario || ( $2 != dns && $2 != readiness ) ]]; then
+  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns|readiness' >&2
   exit 1
 fi
 arch="$(docker info --format '{{.Architecture}}')"
@@ -23,6 +23,9 @@ trap cleanup EXIT
 export BUILDX_CONFIG="${BUILDX_CONFIG:-$work/buildx}"
 CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$work/wingman" ./cmd/wingman
 CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags namespace -o "$work/probe" ./scripts/namespace/probe.go
+if [[ $2 == readiness ]]; then
+  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags namespace -o "$work/readiness-probe" ./scripts/namespace/readiness_probe.go
+fi
 image=wingman-namespace:local
 docker build -t "$image" scripts/namespace
 docker image inspect "$image" --format 'fixture image: {{.Id}} architecture: {{.Architecture}}'
