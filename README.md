@@ -21,6 +21,45 @@ Peer A ◄────────── direct P2P / TURN ───────
    publishes the answer the same way.
 3. **ICE** completes directly (or via TURN). Signaling DNS is now unused.
 
+### DNS server configuration
+
+For an unauthenticated local demo, run `go run ./cmd/wingman serve --local-demo`.
+The default listener uses an ephemeral loopback port. The command prints the actual address after the bind succeeds.
+`--local-demo` accepts only a literal loopback IP address.
+
+For an authenticated listener, run:
+
+```sh
+wingman serve --listen 192.0.2.10:5353 --zone example.com --dns-tsig-key-file /path/to/key.json
+```
+
+Use an address assigned to the server. The listener accepts a literal IPv4 or IPv6 address and a numeric port.
+UDP and TCP use the same port. Both ports must be reachable directly; this transport does not support recursive DNS resolvers.
+The configured zone controls both writes and polls. Zone comparisons ignore letter case and one trailing root dot.
+Names for other zones, including subzones, receive `REFUSED` before storage access.
+
+Remote listeners require a valid TSIG key. Peers use the same `--dns-tsig-key-file` setting for signed queries.
+The restricted JSON file contains `name`, `algorithm`, and `secret`.
+Use a lowercase fully qualified key name, the `hmac-sha256` algorithm, and a nonempty base64 secret.
+The file must permit owner reads and deny group and other access. TSIG authenticates DNS messages; it does not encrypt SDP.
+
+The library exposes `Server.ListenAddr`, `Server.Zone`, and `Server.TSIGKey`.
+Set these fields before `Start`. Keep them immutable while the server runs.
+An empty library zone preserves unrestricted library behavior. The CLI always supplies a zone.
+
+Run the isolated Linux acceptance scenario with:
+
+```sh
+bash scripts/namespace-smoke.sh --scenario dns
+```
+
+The scenario requires Go and a Linux Docker daemon. It builds Linux binaries for the daemon architecture.
+It creates a server namespace and two peer namespaces inside a disposable container.
+The runtime uses `--network=none` with read-only repository and binary mounts.
+The fixture first probes `NET_ADMIN` and `SYS_ADMIN`. If required, it probes a privileged disposable container.
+A failed capability probe fails the scenario. The fixture removes its namespaces and container after the run.
+`BUILDX_CONFIG` can select an existing writable Buildx directory. By default, the wrapper uses a temporary directory.
+
 ### SDP chunking
 
 A real SDP offer is a few KB. DNS labels are limited to 63 octets and use a

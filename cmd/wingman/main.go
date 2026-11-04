@@ -8,7 +8,7 @@
 //
 // For a local single-host demo, start one server and point both peers at it:
 //
-//	wingman serve                              # prints "listening on 127.0.0.1:PORT"
+//	wingman serve --local-demo                 # prints "listening on 127.0.0.1:PORT"
 //	wingman offer --addr 127.0.0.1:PORT --room demo
 //	wingman answer --addr 127.0.0.1:PORT --room demo
 package main
@@ -123,6 +123,8 @@ offer/answer flags:
   --handshake-timeout D    positive handshake duration (default "30s")
 
 serve flags:
+  --listen 127.0.0.1:0    DNS UDP and TCP listen address (literal IP and port)
+  --local-demo            permit unauthenticated loopback DNS
   --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS authentication
   --zone example.com      authoritative DNS zone this server serves
   --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
@@ -139,6 +141,8 @@ func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
+	listen := fs.String("listen", "127.0.0.1:0", "DNS UDP and TCP listen address")
+	localDemo := fs.Bool("local-demo", false, "permit unauthenticated loopback DNS")
 	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
 	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
 	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
@@ -148,11 +152,27 @@ func runServe(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+	if *zone == "" {
+		return errors.New("DNS zone must not be empty")
+	}
 	key, err := loadOptionalTSIG(*tsigFile)
 	if err != nil {
 		return err
 	}
-	srv, err := startServe(key)
+	if *localDemo {
+		host, _, err := net.SplitHostPort(*listen)
+		if err != nil {
+			return fmt.Errorf("local demo listen address: %w", err)
+		}
+		if !net.ParseIP(host).IsLoopback() {
+			return errors.New("local demo requires a loopback IP listen address")
+		}
+	} else if key == nil {
+		return errors.New("DNS requires --dns-tsig-key-file or explicit --local-demo")
+	}
+	srv := dns.NewServer()
+	srv.ListenAddr, srv.Zone, srv.TSIGKey = *listen, *zone, key
+	err = srv.Start(ctx)
 	if err != nil {
 		return err
 	}
