@@ -3,10 +3,12 @@ package dns
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/miekg/dns"
 
@@ -18,11 +20,26 @@ import (
 // are stored; poll queries (the room poll name) return the stored fragments as
 // TXT records. It is safe for concurrent use.
 type Server struct {
-	mu    sync.Mutex
-	frags map[storageKey]map[uint16]sig.Fragment // mu guards all entries and fragments.
-	dns   *dns.Server                            // UDP
-	tcp   *dns.Server                            // TCP
-	addr  string
+	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
+	frags         map[storageKey]*fragmentEntry
+	retainedBytes int
+	now           func() time.Time
+	newTicker     func(time.Duration) (<-chan time.Time, func()) // Set clock hooks before Start or requests.
+
+	lifecycleMu sync.Mutex // lifecycleMu guards listeners, address, and lifecycle channels.
+	dns         *dns.Server
+	tcp         *dns.Server
+	addr        string
+	stop        chan struct{}
+	done        chan struct{}
+}
+
+const fragmentLifetime = 120 * time.Second
+
+type fragmentEntry struct {
+	createdAt time.Time
+	fragments map[uint16]sig.Fragment
+	bytes     int
 }
 
 type storageKey struct {
@@ -33,40 +50,108 @@ type storageKey struct {
 
 // NewServer returns an empty Server.
 func NewServer() *Server {
-	return &Server{frags: make(map[storageKey]map[uint16]sig.Fragment)}
+	return &Server{
+		frags: make(map[storageKey]*fragmentEntry),
+		now:   time.Now,
+		newTicker: func(interval time.Duration) (<-chan time.Time, func()) {
+			ticker := time.NewTicker(interval)
+			return ticker.C, ticker.Stop
+		},
+	}
 }
 
 // Addr returns the listener address (valid after Start).
-func (s *Server) Addr() string { return s.addr }
+func (s *Server) Addr() string {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	return s.addr
+}
 
-// Start binds UDP and TCP listeners on 127.0.0.1:0 (same port) and begins
-// serving. The listeners are shut down when ctx is cancelled. UDP is used for
-// normal queries; TCP is the fallback when a UDP response is truncated (TC bit),
-// which lets large fragment sets ride over TCP rather than being cut off by the
-// UDP datagram limit.
+// Start serves DNS on UDP and TCP listeners at the same loopback address.
+// Context cancellation stops the listeners and the one-second expiry sweep.
+// Entries expire 120 seconds after their first fragment arrives.
+// Call Stop before another Start. Start returns listener setup errors.
 func (s *Server) Start(ctx context.Context) error {
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stop != nil {
+		return fmt.Errorf("start DNS server: call Stop before another Start")
+	}
 	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
 	if err != nil {
-		return err
+		return fmt.Errorf("listen DNS UDP: %w", err)
 	}
 	addr := pc.LocalAddr().(*net.UDPAddr)
 	tcpLn, err := net.Listen("tcp", addr.String())
 	if err != nil {
 		_ = pc.Close()
-		return err
+		return fmt.Errorf("listen DNS TCP: %w", err)
 	}
 	s.addr = addr.String()
 	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize)}
 	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize)}
 
-	go func() {
-		<-ctx.Done()
+	if err := activateListener(s.dns); err != nil {
+		_ = pc.Close()
+		_ = tcpLn.Close()
+		return fmt.Errorf("activate DNS UDP: %w", err)
+	}
+	if err := activateListener(s.tcp); err != nil {
 		_ = s.dns.Shutdown()
-		_ = s.tcp.Shutdown()
-	}()
-	go func() { _ = s.dns.ActivateAndServe() }()
-	go func() { _ = s.tcp.ActivateAndServe() }()
+		_ = tcpLn.Close()
+		return fmt.Errorf("activate DNS TCP: %w", err)
+	}
+	s.stop, s.done = make(chan struct{}), make(chan struct{})
+	ticks, stopTicker := s.newTicker(time.Second)
+	go s.run(ctx, ticks, stopTicker)
 	return nil
+}
+
+func activateListener(server *dns.Server) error {
+	// Shutdown requires ActivateAndServe to finish its listener setup.
+	ready := make(chan struct{})
+	result := make(chan error, 1)
+	server.NotifyStartedFunc = func() { close(ready) }
+	go func() { result <- server.ActivateAndServe() }()
+	select {
+	case <-ready:
+		return nil
+	case err := <-result:
+		return err
+	}
+}
+
+func (s *Server) run(ctx context.Context, ticks <-chan time.Time, stopTicker func()) {
+	defer close(s.done)
+	defer func() { _ = s.tcp.Shutdown() }()
+	defer func() { _ = s.dns.Shutdown() }()
+	defer stopTicker()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.stop:
+			return
+		case <-ticks:
+			s.expire(s.now())
+		}
+	}
+}
+
+func (s *Server) expire(now time.Time) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for key := range s.frags {
+		s.expireKey(key, now)
+	}
+}
+
+// expireKey requires mu because deletion also releases the retained bytes.
+func (s *Server) expireKey(key storageKey, now time.Time) {
+	if entry := s.frags[key]; entry != nil && !now.Before(entry.createdAt.Add(fragmentLifetime)) {
+		s.retainedBytes -= entry.bytes
+		delete(s.frags, key)
+	}
 }
 
 // makeHandler returns a dns.HandlerFunc that truncates responses to the given
@@ -125,17 +210,25 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 	key := storageKey{zone: parsed.Zone, room: parsed.Room, kind: parsed.Kind}
 
 	s.mu.Lock()
-	for seq, stored := range s.frags[key] {
+	now := s.now()
+	s.expireKey(key, now)
+	entry := s.frags[key]
+	if entry == nil {
+		entry = &fragmentEntry{createdAt: now, fragments: make(map[uint16]sig.Fragment)}
+		s.frags[key] = entry
+	}
+	for seq, stored := range entry.fragments {
 		if stored.Total != frag.Total || (seq == frag.Seq && !bytes.Equal(stored.Data, frag.Data)) {
 			s.mu.Unlock()
 			_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
 			return
 		}
 	}
-	if s.frags[key] == nil {
-		s.frags[key] = make(map[uint16]sig.Fragment)
+	if _, exists := entry.fragments[parsed.Seq]; !exists {
+		entry.bytes += len(payload)
+		s.retainedBytes += len(payload)
+		entry.fragments[parsed.Seq] = frag
 	}
-	s.frags[key][parsed.Seq] = frag
 	s.mu.Unlock()
 
 	resp := new(dns.Msg)
@@ -167,10 +260,13 @@ func (s *Server) respondPoll(w dns.ResponseWriter, req *dns.Msg, name string, tr
 	key := storageKey{zone: zone, room: room, kind: kind}
 
 	s.mu.Lock()
-	stored := s.frags[key]
-	frags := make([]sig.Fragment, 0, len(stored))
-	for _, f := range stored {
-		frags = append(frags, f)
+	s.expireKey(key, s.now())
+	var frags []sig.Fragment
+	if entry := s.frags[key]; entry != nil {
+		frags = make([]sig.Fragment, 0, len(entry.fragments))
+		for _, f := range entry.fragments {
+			frags = append(frags, f)
+		}
 	}
 	s.mu.Unlock()
 	// Sort by seq so that, if the response is truncated to fit the transport,
@@ -215,12 +311,14 @@ func setRcode(req *dns.Msg, rcode int) *dns.Msg {
 	return resp
 }
 
-// Stop shuts the server down.
+// Stop waits for the listeners and the expiry sweep to stop.
+// Repeated calls are safe. Call Stop before another Start.
 func (s *Server) Stop() {
-	if s.dns != nil {
-		_ = s.dns.Shutdown()
-	}
-	if s.tcp != nil {
-		_ = s.tcp.Shutdown()
+	s.lifecycleMu.Lock()
+	defer s.lifecycleMu.Unlock()
+	if s.stop != nil {
+		close(s.stop)
+		<-s.done
+		s.stop = nil
 	}
 }
