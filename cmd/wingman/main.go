@@ -44,6 +44,8 @@ const defaultZone = "example.com"
 // defaultDialTimeout bounds a single DNS exchange for a peer.
 const defaultDialTimeout = 5 * time.Second
 
+const defaultHandshakeTimeout = 30 * time.Second
+
 // defaultPollInterval is the delay between poll attempts while a peer waits for
 // the other side's SDP.
 const defaultPollInterval = 50 * time.Millisecond
@@ -115,6 +117,7 @@ offer/answer flags:
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
   --metrics               print connection metrics (Prometheus format) on exit
+  --handshake-timeout D    positive handshake duration (default "30s")
 
 serve flags:
   --zone example.com      authoritative DNS zone this server serves
@@ -185,17 +188,18 @@ func runServe(ctx context.Context, args []string) error {
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	addr            string
-	zone            string
-	room            string
-	label           string
-	signaling       string
-	signalingURL    string
-	signalingSecret string
-	turn            []string
-	user            string
-	pass            string
-	metrics         bool
+	addr             string
+	zone             string
+	room             string
+	label            string
+	signaling        string
+	signalingURL     string
+	signalingSecret  string
+	turn             []string
+	user             string
+	pass             string
+	metrics          bool
+	handshakeTimeout time.Duration
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
@@ -214,11 +218,15 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	user := fs.String("user", "", "TURN username for --turn servers")
 	pass := fs.String("pass", "", "TURN password for --turn servers")
 	metricsFlag := fs.Bool("metrics", false, "print connection metrics (Prometheus format) on exit")
+	handshakeTimeout := fs.Duration("handshake-timeout", defaultHandshakeTimeout, "positive handshake duration")
 	if err := fs.Parse(args); err != nil {
 		return peerOpts{}, err
 	}
 	if *room == "" {
 		return peerOpts{}, fmt.Errorf("%s: --room is required", name)
+	}
+	if *handshakeTimeout <= 0 {
+		return peerOpts{}, fmt.Errorf("%s: --handshake-timeout must be positive", name)
 	}
 	if *signaling == "dns" && *addr == "" {
 		return peerOpts{}, fmt.Errorf("%s: --addr is required for --signaling dns", name)
@@ -230,6 +238,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 		addr: *addr, zone: *zone, room: *room, label: *label,
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
 		turn: turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		handshakeTimeout: *handshakeTimeout,
 	}, nil
 }
 
@@ -246,13 +255,19 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		return err
 	}
 	m := metrics.New()
-	sess, err := startSession(ctx, role, peer.Config{
+	timeout := opts.handshakeTimeout
+	if timeout == 0 {
+		timeout = defaultHandshakeTimeout
+	}
+	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
+	sess, err := startSession(handshakeCtx, role, peer.Config{
 		Room:       opts.room,
 		Zone:       opts.zone,
 		Transport:  transport,
 		ICEServers: iceServers,
 		Label:      opts.label,
 	}, m)
+	cancel()
 	if err != nil {
 		return err
 	}

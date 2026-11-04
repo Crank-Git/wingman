@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -395,11 +396,13 @@ func TestRunPeerHappyPath(t *testing.T) {
 	out := &bytes.Buffer{}
 	errCh := make(chan error, 1)
 	go func() {
-		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman"}
+		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman", handshakeTimeout: 2 * time.Second}
 		errCh <- runPeer(ctx, peer.RoleOfferer, opts, br, out)
 	}()
 
 	<-ready // answer registered before we release the input line
+	// The completed handshake deadline must not close the live channel.
+	time.Sleep(2100 * time.Millisecond)
 	br.ch <- []byte("hello from run\n")
 	select {
 	case <-received:
@@ -627,6 +630,70 @@ func TestCLIExec(t *testing.T) {
 	// an unknown command should exit non-zero.
 	if err := exec.Command(bin, "bogus").Run(); err == nil {
 		t.Fatal("run bogus: expected non-zero exit")
+	}
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "answer", "--addr", srv.Addr(), "--room", "cli-timeout", "--handshake-timeout", "50ms")
+	out, err = cmd.CombinedOutput()
+	if err == nil || !bytes.Contains(out, []byte("context deadline exceeded")) {
+		t.Fatalf("stalled handshake: err=%v output=%s", err, out)
+	}
+}
+
+func TestParsePeerFlagsHandshakeTimeout(t *testing.T) {
+	for _, role := range []string{"offer", "answer"} {
+		for _, tc := range []struct {
+			value string
+			want  time.Duration
+		}{
+			{"", 30 * time.Second},
+			{"90s", 90 * time.Second},
+			{"1m30s", 90 * time.Second},
+		} {
+			args := []string{"--addr", "127.0.0.1:5353", "--room", "r"}
+			if tc.value != "" {
+				args = append(args, "--handshake-timeout", tc.value)
+			}
+			opts, err := parsePeerFlags(role, args)
+			if err != nil || opts.handshakeTimeout != tc.want {
+				t.Fatalf("%s duration %q: opts=%+v err=%v", role, tc.value, opts, err)
+			}
+		}
+		for _, value := range []string{"0", "-1s", "invalid", "999999999999999999999s"} {
+			_, err := parsePeerFlags(role, []string{"--addr", "127.0.0.1:5353", "--room", "r", "--handshake-timeout", value})
+			if err == nil {
+				t.Fatalf("%s accepts duration %q", role, value)
+			}
+		}
+	}
+}
+
+func TestRunPeerHandshakePreservesContextCause(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	for _, role := range []peer.Role{peer.RoleOfferer, peer.RoleAnswerer} {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: role.String(), handshakeTimeout: 50 * time.Millisecond}
+		start := time.Now()
+		err := runPeer(ctx, role, opts, strings.NewReader(""), io.Discard)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+			t.Fatalf("%s timeout: err=%v elapsed=%v", role, err, time.Since(start))
+		}
+		ctx, cancel = context.WithCancel(context.Background())
+		cancel()
+		err = runPeer(ctx, role, opts, strings.NewReader(""), io.Discard)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s cancellation: %v", role, err)
+		}
 	}
 }
 
