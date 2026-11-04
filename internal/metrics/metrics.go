@@ -24,9 +24,11 @@ type Metrics struct {
 
 	candidates map[string]int64
 
-	handshakeLatencyTotal time.Duration
-	handshakeLatencyMax   time.Duration
-	handshakeCount        int64
+	handshakeLatencyTotal   time.Duration
+	handshakeLatencyMax     time.Duration
+	handshakeCount          int64
+	dnsRequests             [3][2]int64
+	dnsRetainedPayloadBytes int64
 }
 
 // New returns an empty, ready-to-use Metrics.
@@ -163,15 +165,18 @@ func (m *Metrics) HandshakeLatencyAvg() time.Duration {
 
 // Snapshot is an immutable point-in-time copy of a Metrics.
 type Snapshot struct {
-	ConnectionsAttempted  int64
-	ConnectionsSucceeded  int64
-	ConnectionsFailed     int64
-	Failures              int64
-	Candidates            map[string]int64
-	HandshakeCount        int64
-	HandshakeLatencyTotal time.Duration
-	HandshakeLatencyMax   time.Duration
-	HandshakeLatencyAvg   time.Duration
+	// DNSRequests indexes write, poll, request; each pair indexes success, rejected.
+	DNSRequests             [3][2]int64
+	DNSRetainedPayloadBytes int64
+	ConnectionsAttempted    int64
+	ConnectionsSucceeded    int64
+	ConnectionsFailed       int64
+	Failures                int64
+	Candidates              map[string]int64
+	HandshakeCount          int64
+	HandshakeLatencyTotal   time.Duration
+	HandshakeLatencyMax     time.Duration
+	HandshakeLatencyAvg     time.Duration
 }
 
 // Snapshot returns a copy of the current metrics.
@@ -187,15 +192,17 @@ func (m *Metrics) Snapshot() Snapshot {
 		avg = m.handshakeLatencyTotal / time.Duration(m.handshakeCount)
 	}
 	return Snapshot{
-		ConnectionsAttempted:  m.connectionsAttempted,
-		ConnectionsSucceeded:  m.connectionsSucceeded,
-		ConnectionsFailed:     m.connectionsFailed,
-		Failures:              m.failures,
-		Candidates:            cands,
-		HandshakeCount:        m.handshakeCount,
-		HandshakeLatencyTotal: m.handshakeLatencyTotal,
-		HandshakeLatencyMax:   m.handshakeLatencyMax,
-		HandshakeLatencyAvg:   avg,
+		DNSRequests:             m.dnsRequests,
+		DNSRetainedPayloadBytes: m.dnsRetainedPayloadBytes,
+		ConnectionsAttempted:    m.connectionsAttempted,
+		ConnectionsSucceeded:    m.connectionsSucceeded,
+		ConnectionsFailed:       m.connectionsFailed,
+		Failures:                m.failures,
+		Candidates:              cands,
+		HandshakeCount:          m.handshakeCount,
+		HandshakeLatencyTotal:   m.handshakeLatencyTotal,
+		HandshakeLatencyMax:     m.handshakeLatencyMax,
+		HandshakeLatencyAvg:     avg,
 	}
 }
 
@@ -216,6 +223,13 @@ func (m *Metrics) Text() string {
 	counter("wingman_connections_succeeded", "Total successful connection handshakes.", float64(snap.ConnectionsSucceeded))
 	counter("wingman_connections_failed", "Total failed connection handshakes.", float64(snap.ConnectionsFailed))
 	counter("wingman_failures", "Total recorded failures.", float64(snap.Failures))
+	fmt.Fprint(&b, "# HELP wingman_dns_requests_total Total DNS queries by operation and result.\n# TYPE wingman_dns_requests_total counter\n")
+	for i, operation := range []string{DNSWrite, DNSPoll, DNSRequest} {
+		for j, result := range []string{DNSSuccess, DNSRejected} {
+			fmt.Fprintf(&b, "wingman_dns_requests_total{operation=%q,result=%q} %d\n", operation, result, snap.DNSRequests[i][j])
+		}
+	}
+	gauge("wingman_dns_retained_payload_bytes", "Current retained DNS fragment payload bytes.", float64(snap.DNSRetainedPayloadBytes))
 
 	for _, kind := range sortedKeys(snap.Candidates) {
 		counter(fmt.Sprintf("wingman_candidates_%s", kind),
