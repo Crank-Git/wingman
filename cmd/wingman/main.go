@@ -89,6 +89,8 @@ func dispatch(ctx context.Context, args []string) error {
 		return runOffer(ctx, args[1:])
 	case "answer":
 		return runAnswer(ctx, args[1:])
+	case "cleanup":
+		return runCleanup(ctx, args[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -104,6 +106,10 @@ Usage:
   wingman serve --local-demo         start a local DNS signaling server
   wingman offer  [flags]             run the offerer: create a data channel, then type messages
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
+  wingman cleanup [flags]            delete one DynUpdate room's offer and answer TXT RRsets
+
+cleanup flags (all required):
+  --addr HOST:PORT --zone ZONE --room NAME --dns-tsig-key-file PATH
 
 offer/answer flags:
   --addr HOST:PORT        DNS server address (required for dns and dynupdate)
@@ -355,11 +361,7 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 func buildTransport(opts peerOpts) (sig.Transport, error) {
 	switch opts.signaling {
 	case "dynupdate":
-		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
-		if err != nil {
-			return nil, err
-		}
-		return dns.NewDynUpdate(opts.addr, opts.zone, key)
+		return buildDynUpdate(opts)
 	case "", "dns":
 		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
 		if err != nil {

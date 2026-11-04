@@ -14,7 +14,11 @@ import (
 type DynUpdate struct {
 	Resolver Resolver
 	Zone     string
-	key      TSIGKey
+	// OnCleanupFailure receives one notification when cleanup after a valid Poll fails.
+	// Poll still returns the validated message. The callback receives no private data.
+	// Set this field before concurrent use. The callback must support concurrent calls.
+	OnCleanupFailure func()
+	key              TSIGKey
 }
 
 // NewDynUpdate returns a transport with a signed TCP resolver and a canonical zone.

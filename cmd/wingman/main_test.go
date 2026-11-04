@@ -660,6 +660,7 @@ func TestCLIExec(t *testing.T) {
 		t.Fatalf("build wingman: %v\n%s", err, out)
 	}
 	t.Run("DynUpdate rejects invalid configuration", func(t *testing.T) { checkDynUpdateCLI(t, bin) })
+	t.Run("DynUpdate cleanup recovers a room", func(t *testing.T) { checkDynUpdateCleanupCLI(t, bin) })
 
 	// help should exit 0 and print the usage banner.
 	helpCmd := exec.Command(bin, "help")

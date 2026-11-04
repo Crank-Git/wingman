@@ -61,4 +61,27 @@ Atomic RRset replacement makes a nonempty incomplete answer a validation failure
 NXDOMAIN and empty successful answers retry every 250 milliseconds until the context expires.
 Other DNS result codes return `DynUpdateRcodeError`. Size failures return `DynUpdateSizeError`.
 Cancellation and exchange failures preserve their causes.
-Issue #44 adds cleanup after successful consumption. Issue #45 supplies the pinned BIND fixture.
+After successful validation, Poll attempts cleanup of only the consumed kind's TXT RRset.
+If cleanup fails, Poll returns the valid message and calls the optional `OnCleanupFailure func()` once.
+The callback receives no error or message. The library does not log the failure or retain mutable error state.
+Set the callback before concurrent use. The callback must support concurrent calls.
+The CLI prints a fixed warning that suggests explicit cleanup.
+Issue #45 supplies the pinned BIND fixture.
+
+## Cleanup
+
+`DynUpdate.Cleanup(ctx, room)` deletes the room's offer and answer TXT RRsets in one signed TCP UPDATE.
+It preserves other rooms, owner names, and record types. The `sig.Transport` interface retains only Publish and Poll.
+Cleanup requires a valid transport and room. It returns authentication, network, cancellation, and typed DNS rejection errors.
+Missing RRsets do not cause an error.
+
+Use a fresh random room for each exchange. TTL one controls cache retention, not authoritative record expiry.
+An interrupted exchange can leave authoritative records. Delete those records explicitly:
+
+```sh
+wingman cleanup --addr HOST:PORT --zone ZONE --room ROOM --dns-tsig-key-file PATH
+```
+
+All four flags are required. Use the same zone, server address, and key file as the interrupted exchange.
+The command prints `DynUpdate cleanup complete.` on success. A failure returns a nonzero exit code.
+Limit the server's update permissions to TXT records within the signaling subtree.

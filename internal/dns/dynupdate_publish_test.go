@@ -288,13 +288,17 @@ func (f *updateFixture) ServeDNS(w mdns.ResponseWriter, req *mdns.Msg) {
 	f.mu.Lock()
 	if req.Opcode == mdns.OpcodeUpdate {
 		f.updates++
-		if len(req.Ns) < 2 || req.Ns[0].Header().Class != mdns.ClassANY {
-			f.t.Error("UPDATE lacks atomic replacement")
-		}
-		f.stored = append([]mdns.RR(nil), req.Ns[1:]...)
-		for _, rr := range f.stored {
-			if rr.Header().Ttl != 1 {
-				f.t.Error("TTL differs from one")
+		if len(req.Ns) == 1 && req.Ns[0].Header().Class == mdns.ClassANY {
+			f.stored = nil
+		} else {
+			if len(req.Ns) < 2 || req.Ns[0].Header().Class != mdns.ClassANY {
+				f.t.Error("UPDATE lacks atomic replacement")
+			}
+			f.stored = append([]mdns.RR(nil), req.Ns[1:]...)
+			for _, rr := range f.stored {
+				if rr.Header().Ttl != 1 {
+					f.t.Error("TTL differs from one")
+				}
 			}
 		}
 	} else {

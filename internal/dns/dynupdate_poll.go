@@ -51,7 +51,15 @@ func (t *DynUpdate) Poll(ctx context.Context, room string, kind sig.Kind) ([]byt
 		if reply.Rcode != dns.RcodeSuccess {
 			return nil, &DynUpdateRcodeError{Operation: "poll", Rcode: reply.Rcode}
 		}
-		return reassembleDynUpdate(owner, reply.Answer)
+		message, err := reassembleDynUpdate(owner, reply.Answer)
+		if err != nil {
+			return nil, err
+		}
+		// A cleanup failure must not discard a validated message.
+		if err := t.cleanupKinds(ctx, room, kind); err != nil && t.OnCleanupFailure != nil {
+			t.OnCleanupFailure()
+		}
+		return message, nil
 	}
 }
 
