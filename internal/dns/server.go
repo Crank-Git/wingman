@@ -23,6 +23,7 @@ type Server struct {
 	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
 	frags         map[storageKey]*fragmentEntry
 	retainedBytes int
+	limits        storageLimits // Set limits before Start or requests.
 	now           func() time.Time
 	newTicker     func(time.Duration) (<-chan time.Time, func()) // Set clock hooks before Start or requests.
 
@@ -51,8 +52,9 @@ type storageKey struct {
 // NewServer returns an empty Server.
 func NewServer() *Server {
 	return &Server{
-		frags: make(map[storageKey]*fragmentEntry),
-		now:   time.Now,
+		frags:  make(map[storageKey]*fragmentEntry),
+		limits: defaultStorageLimits(),
+		now:    time.Now,
 		newTicker: func(interval time.Duration) (<-chan time.Time, func()) {
 			ticker := time.NewTicker(interval)
 			return ticker.C, ticker.Stop
@@ -211,18 +213,18 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 
 	s.mu.Lock()
 	now := s.now()
-	s.expireKey(key, now)
+	for existing := range s.frags {
+		s.expireKey(existing, now)
+	}
 	entry := s.frags[key]
+	if code := s.admitFragment(key, entry, frag); code != dns.RcodeSuccess {
+		s.mu.Unlock()
+		_ = w.WriteMsg(setRcode(req, code))
+		return
+	}
 	if entry == nil {
 		entry = &fragmentEntry{createdAt: now, fragments: make(map[uint16]sig.Fragment)}
 		s.frags[key] = entry
-	}
-	for seq, stored := range entry.fragments {
-		if stored.Total != frag.Total || (seq == frag.Seq && !bytes.Equal(stored.Data, frag.Data)) {
-			s.mu.Unlock()
-			_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
-			return
-		}
 	}
 	if _, exists := entry.fragments[parsed.Seq]; !exists {
 		entry.bytes += len(payload)
@@ -239,6 +241,35 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 		Txt: []string{"ok"},
 	})
 	_ = w.WriteMsg(resp)
+}
+
+// admitFragment requires mu so the quota check and retention stay atomic.
+func (s *Server) admitFragment(key storageKey, entry *fragmentEntry, frag sig.Fragment) int {
+	if entry == nil {
+		if len(s.frags) >= s.limits.keys {
+			return dns.RcodeServerFailure
+		}
+	} else {
+		for seq, stored := range entry.fragments {
+			if stored.Total != frag.Total || (seq == frag.Seq && !bytes.Equal(stored.Data, frag.Data)) {
+				return dns.RcodeFormatError
+			}
+		}
+		if _, exists := entry.fragments[frag.Seq]; exists {
+			return dns.RcodeSuccess
+		}
+	}
+	if len(frag.Data) > fragmentDataBytes || int(frag.Total) > fragmentLimit(s.limits) || !fitsResponse(key, frag.Total, s.limits) {
+		return dns.RcodeServerFailure
+	}
+	storedBytes := 0
+	if entry != nil {
+		storedBytes = entry.bytes
+	}
+	if storedBytes+len(frag.Data) > s.limits.messageBytes+messageCRCBytes || s.retainedBytes+len(frag.Data) > s.limits.retainedBytes {
+		return dns.RcodeServerFailure
+	}
+	return dns.RcodeSuccess
 }
 
 // respondPoll returns the stored fragments for a room as one TXT record each,
