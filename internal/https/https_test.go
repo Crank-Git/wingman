@@ -362,6 +362,7 @@ func TestHandlerSweepsStaleEntries(t *testing.T) {
 	h.mu.Lock()
 	h.msgs["fresh/offer"] = entry{data: []byte("FRESH"), at: time.Now()}
 	h.msgs["stale/offer"] = entry{data: []byte("STALE"), at: time.Now().Add(-2 * time.Second)}
+	h.payloadBytes = len("FRESH") + len("STALE")
 	h.mu.Unlock()
 
 	h.sweep(time.Now())
