@@ -27,6 +27,31 @@ const defaultLabel = "wingman"
 // guards against machines whose interfaces never report a complete state.
 const iceGatherTimeout = 10 * time.Second
 
+// peerConn is the subset of *webrtc.PeerConnection used by the handshake. It is
+// a seam: newPeerConnection is a package variable so tests can substitute a
+// fake and drive the failure branches (CreateDataChannel/CreateOffer/SetLocal
+// Description/CreateAnswer failures) deterministically instead of racing the
+// real ICE machinery.
+type peerConn interface {
+	Close() error
+	OnConnectionStateChange(func(webrtc.PeerConnectionState))
+	OnDataChannel(func(*webrtc.DataChannel))
+	OnICECandidate(func(*webrtc.ICECandidate))
+	CreateDataChannel(label string, options *webrtc.DataChannelInit) (*webrtc.DataChannel, error)
+	CreateOffer(options *webrtc.OfferOptions) (webrtc.SessionDescription, error)
+	CreateAnswer(options *webrtc.AnswerOptions) (webrtc.SessionDescription, error)
+	SetLocalDescription(desc webrtc.SessionDescription) error
+	LocalDescription() *webrtc.SessionDescription
+	SetRemoteDescription(desc webrtc.SessionDescription) error
+	ICEGatheringState() webrtc.ICEGatheringState
+}
+
+// newPeerConnection constructs a peer connection. It is a package variable so
+// tests can inject a fake that fails specific methods (see peerConn above).
+var newPeerConnection = func(cfg webrtc.Configuration) (peerConn, error) {
+	return webrtc.NewPeerConnection(cfg)
+}
+
 // Role identifies whether a peer is the offerer (role A) or answerer (role B).
 // The offerer creates the data channel; the answerer receives it.
 type Role int
@@ -72,7 +97,7 @@ type Session struct {
 	label  string
 
 	mu       sync.Mutex
-	pc       *webrtc.PeerConnection
+	pc       peerConn
 	dataChan *webrtc.DataChannel
 	onMessage MessageHandler
 	met      *metrics.Metrics
@@ -135,7 +160,7 @@ func (s *Session) SendText(text string) error {
 // Start runs the full handshake and blocks until the data channel is open or
 // ctx is canceled. It returns the open data channel on success.
 func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
-	pc, err := webrtc.NewPeerConnection(configuration(s.cfg))
+	pc, err := newPeerConnection(configuration(s.cfg))
 	if err != nil {
 		return nil, fmt.Errorf("peer: new peer connection: %w", err)
 	}
@@ -215,7 +240,7 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 
 // runOfferer creates the data channel, publishes the offer, waits for the
 // answer, and returns. ICE then proceeds and the channel opens.
-func (s *Session) runOfferer(ctx context.Context, pc *webrtc.PeerConnection) error {
+func (s *Session) runOfferer(ctx context.Context, pc peerConn) error {
 	dc, err := pc.CreateDataChannel(s.label, nil)
 	if err != nil {
 		return fmt.Errorf("peer: create data channel: %w", err)
@@ -257,7 +282,7 @@ func (s *Session) runOfferer(ctx context.Context, pc *webrtc.PeerConnection) err
 
 // runAnswerer waits for the offer, responds with an answer, and returns. The
 // offerer-created data channel arrives via OnDataChannel.
-func (s *Session) runAnswerer(ctx context.Context, pc *webrtc.PeerConnection) error {
+func (s *Session) runAnswerer(ctx context.Context, pc peerConn) error {
 	offer, err := s.cfg.Transport.Poll(ctx, s.cfg.Room, sig.Offer)
 	if err != nil {
 		return fmt.Errorf("peer: poll offer: %w", err)
