@@ -7,7 +7,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent.parent
-STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests", "namespace-tests",
+STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests", "namespace-tests", "dynupdate-fixture-tests",
           "vet", "coverage", "race", "build"]
 
 
@@ -53,7 +53,8 @@ if [[ "${FAIL_STAGE:-}" == "$stage" ]]; then exit 7; fi
             'sys.exit(7 if os.environ.get("FAIL_STAGE") == "complexity" else 0)\n')
         for name, stage in [("test_quality.py", "quality-tests"),
                             ("test_verify.py", "verify-tests"),
-                            ("test_namespace.py", "namespace-tests")]:
+                            ("test_namespace.py", "namespace-tests"),
+                            ("test_dynupdate.py", "dynupdate-fixture-tests")]:
             (scripts / name).write_text(
                 'import os, unittest\n'
                 'class Fixture(unittest.TestCase):\n'
@@ -140,9 +141,17 @@ class WorkflowChecks(unittest.TestCase):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         command = "run: bash scripts/namespace-smoke.sh --scenario all"
         self.assertEqual(workflow.count(command), 1)
-        step = workflow.split("      - name: Namespace acceptance\n")[1]
+        step = workflow.split("      - name: Namespace acceptance\n")[1].split("      - name:")[0]
         self.assertEqual(step.strip(), command)
         self.assertLess(workflow.index("run: bash scripts/verify.sh"), workflow.index(command))
+
+    def test_ci_runs_bind_acceptance_after_namespace(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        command = "run: python3 scripts/dynupdate-acceptance.py"
+        self.assertEqual(workflow.count(command), 1)
+        step = workflow.split("      - name: BIND acceptance\n")[1].split("      - name:")[0]
+        self.assertEqual(step.strip(), command)
+        self.assertLess(workflow.index("run: bash scripts/namespace-smoke.sh --scenario all"), workflow.index(command))
 
     def test_ci_uses_the_verification_entry_point(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()

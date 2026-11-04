@@ -150,16 +150,24 @@ func TestServeRollsBackEachBindFailure(t *testing.T) {
 	cert, key, _ := cliCertificate(t)
 	for _, position := range []string{"dns", "https", "metrics", "turn"} {
 		t.Run(position, func(t *testing.T) {
-			blocked, err := net.ListenPacket("udp", "127.0.0.1:0")
-			if err != nil {
-				t.Fatal(err)
+			var blockedAddr string
+			// Independent TCP and UDP allocations can select the same port.
+			// Reserve only the protocol that must fail at this stage.
+			if position == "dns" || position == "turn" {
+				blocked, err := net.ListenPacket("udp", "127.0.0.1:0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer blocked.Close()
+				blockedAddr = blocked.LocalAddr().String()
+			} else {
+				blocked, err := net.Listen("tcp", "127.0.0.1:0")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer blocked.Close()
+				blockedAddr = blocked.Addr().String()
 			}
-			defer blocked.Close()
-			tcp, err := net.Listen("tcp", blocked.LocalAddr().String())
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer tcp.Close()
 			address := func() string {
 				t.Helper()
 				ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -173,7 +181,7 @@ func TestServeRollsBackEachBindFailure(t *testing.T) {
 			dnsAddr, tlsAddr, metricsAddr := address(), address(), address()
 			args := []string{"--local-demo", "--listen", dnsAddr, "--https-listen", tlsAddr, "--tls-cert", cert, "--tls-key", key, "--metrics-addr", metricsAddr}
 			flag := map[string]string{"dns": "--listen", "https": "--https-listen", "metrics": "--metrics-addr", "turn": "--turn-server"}[position]
-			args = append(args, flag, tcp.Addr().String())
+			args = append(args, flag, blockedAddr)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			reader, writer, err := os.Pipe()

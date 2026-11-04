@@ -78,15 +78,18 @@ The `sig.Transport` interface has exactly two methods, `Publish` and `Poll`.
 - **`WriteOverQuery`** (default): encodes writes as DNS queries that the
   authoritative server interprets as writes. This matches the rendezvous-name
   scheme above and keeps DNS purely a request/response channel.
-- **`DynUpdate`** (optional): an RFC 2136 dynamic-update backend for environments
-  that run a real authoritative server accepting `DNSUPDATE` messages.
+- **`DynUpdate`** (in progress): an authenticated RFC 2136 backend with Publish, Poll, and scoped cleanup.
+  The real BIND fixture remains pending in issue #45. See [DynUpdate configuration](docs/dynupdate.md).
+  TTL one controls cache retention; it does not expire authoritative records.
+  Use fresh random rooms. After an interrupted exchange, run
+  `wingman cleanup --addr HOST:PORT --zone ZONE --room ROOM --dns-tsig-key-file PATH`.
 - **HTTPS** (optional): a `sig.Transport` backed by an ordinary HTTPS
   `http.Handler` for environments where unsolicited DNS queries are dropped by a
   firewall or ISP. The same room/kind addressing applies, but the whole SDP is
   carried in a single request body, so no chunking is needed.
 
 All three are pluggable behind the same interface. The CLI selects one with
-`--signaling dns` (default) or `--signaling https --signaling-url https://…`.
+`--signaling dns` (default), `--signaling dynupdate`, or `--signaling https --signaling-url https://…`.
 
 To enable the bundled TLS listener, supply `--https-listen`, `--tls-cert`, and `--tls-key` to `serve`.
 HTTPS stays disabled without `--https-listen`. The certificate and private key use PEM files.
