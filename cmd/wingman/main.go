@@ -106,12 +106,12 @@ Usage:
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
 
 offer/answer flags:
-  --addr 127.0.0.1:PORT   DNS server address printed by 'serve' (required for --signaling dns)
+  --addr HOST:PORT        DNS server address (required for dns and dynupdate)
   --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS queries
   --room NAME             signaling room shared by both peers (required)
-  --zone example.com      authoritative DNS zone (default "example.com")
+  --zone example.com      authoritative DNS zone (required explicitly for dynupdate; default "example.com" otherwise)
   --label wingman         data channel label (default "wingman")
-  --signaling dns|https   signaling transport (default "dns")
+  --signaling dns|https|dynupdate  signaling transport (default "dns")
   --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
   --signaling-allow-loopback-http  permit loopback HTTP for development and tests
   --signaling-secret S    shared secret for --signaling https (authenticates the channel)
@@ -217,11 +217,11 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
-	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for --signaling dns)")
+	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for dns and dynupdate)")
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone")
 	room := fs.String("room", "", "signaling room shared with the other peer (required)")
 	label := fs.String("label", "wingman", "data channel label")
-	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
+	signaling := fs.String("signaling", "dns", "signaling transport: dns, https, or dynupdate")
 	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
 	signalingSecret := fs.String("signaling-secret", "", "shared secret for --signaling https (authenticates the signaling channel)")
 	signalingSecretFile := fs.String("signaling-secret-file", "", "restricted HTTPS token file")
@@ -251,6 +251,17 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	}
 	if *signaling == "https" && strings.TrimSpace(*signalingURL) == "" {
 		return peerOpts{}, fmt.Errorf("%s: --signaling-url is required for --signaling https", name)
+	}
+	if *signaling == "dynupdate" {
+		zoneSet := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "zone" {
+				zoneSet = true
+			}
+		})
+		if strings.TrimSpace(*addr) == "" || !zoneSet || strings.TrimSpace(*zone) == "" || strings.TrimSpace(*tsigFile) == "" {
+			return peerOpts{}, fmt.Errorf("%s: dynupdate requires --addr, explicit --zone, and --dns-tsig-key-file", name)
+		}
 	}
 	return peerOpts{
 		dnsTSIGKeyFile: *tsigFile, addr: *addr, zone: *zone, room: *room, label: *label,
@@ -340,10 +351,15 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 	return sess, nil
 }
 
-// buildTransport selects the signaling transport from opts. DNS is the default;
-// https requires a --signaling-url.
+// buildTransport returns the selected transport after credential validation.
 func buildTransport(opts peerOpts) (sig.Transport, error) {
 	switch opts.signaling {
+	case "dynupdate":
+		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		return dns.NewDynUpdate(opts.addr, opts.zone, key)
 	case "", "dns":
 		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
 		if err != nil {
@@ -364,7 +380,7 @@ func buildTransport(opts peerOpts) (sig.Transport, error) {
 		tr.AllowLoopbackHTTP = opts.allowLoopbackHTTP
 		return tr, nil
 	default:
-		return nil, fmt.Errorf("unknown signaling %q (want dns or https)", opts.signaling)
+		return nil, fmt.Errorf("unknown signaling %q (want dns, https, or dynupdate)", opts.signaling)
 	}
 }
 
