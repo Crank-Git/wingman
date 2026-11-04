@@ -2,7 +2,7 @@
 id: diagnostics
 feature: Diagnostics and network verification
 epic: Epic 6: Diagnostics
-status: issued
+status: built
 issues: [46, 47, 48, 49, 50, 51]
 mockups: [mockups/11-diagnostics.html]
 ---
@@ -68,11 +68,11 @@ A skipped optional network test reports its prerequisite. It cannot count as a p
 The demo uses temporary credentials and removes temporary files on exit.
 
 ## Acceptance criteria
-- [ ] FR-diagnostics-1: Doctor detects an unreachable endpoint with a nonzero exit.
-- [ ] FR-diagnostics-2: A relay-only test reports relay after successful message transfer.
-- [ ] FR-diagnostics-3: The namespace suite transfers data through the local TURN server.
-- [ ] FR-diagnostics-4: A fresh clone runs the demo without manual SDP exchange.
-- [ ] FR-diagnostics-5: Captured logs contain no test password, secret, or raw SDP.
+- [x] FR-diagnostics-1: Doctor detects an unreachable endpoint with a nonzero exit.
+- [x] FR-diagnostics-2: A relay-only test reports relay after successful message transfer.
+- [x] FR-diagnostics-3: The namespace suite transfers data through the local TURN server.
+- [x] FR-diagnostics-4: A fresh clone runs the demo without manual SDP exchange.
+- [x] FR-diagnostics-5: Captured logs contain no test password, secret, or raw SDP.
 
 ## Out of scope
 No file transfer, port forwarding, video calls, anonymity guarantees, or automatic NAT/router configuration.

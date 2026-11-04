@@ -124,7 +124,7 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 | Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | built | Epic 3: Peer repairs |
 | Deployable servers and authentication | [server-operations](features/09-server-operations.md) | built | Epic 4: Server operations |
 | RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | built | Epic 5: DynUpdate |
-| Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | issued | Epic 6: Diagnostics |
+| Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | built | Epic 6: Diagnostics |
 
 Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.
 
@@ -317,6 +317,7 @@ Every milestone leaves tests green. The operator approves each promotion from de
 - No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 
 ## Changelog
+- 2026-11-04: Limit doctor to the selected signaling endpoint and omit inapplicable checks. Allow at most one additional second for required DynUpdate cleanup after the probe deadline. Prove relay paths with actual local TURN and isolated namespace transfers.
 - 2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
 - 2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
 - 2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.

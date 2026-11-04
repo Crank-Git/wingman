@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: Diagnostics and network verification</h1>
-<p class="meta">Epic 6: Diagnostics &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 6: Diagnostics &nbsp; <span class="badge">built</span></p>
 <h2 id="diagnostics-diagnostics-and-network-verification">Diagnostics and network verification</h2>
 <h3 id="diagnostics-purpose">Purpose</h3>
 <p>Make failures understandable and prove the main network paths.</p>
@@ -209,15 +209,15 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Test refused authentication, blocked TCP fallback, expired deadline, and unavailable relay. A skipped optional network test reports its prerequisite. It cannot count as a pass. The demo uses temporary credentials and removes temporary files on exit.</p>
 <h3 id="diagnostics-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-diagnostics-1: Doctor detects an unreachable endpoint with a nonzero exit.
+<li>[x] FR-diagnostics-1: Doctor detects an unreachable endpoint with a nonzero exit.
 </li>
-<li>[ ] FR-diagnostics-2: A relay-only test reports relay after successful message transfer.
+<li>[x] FR-diagnostics-2: A relay-only test reports relay after successful message transfer.
 </li>
-<li>[ ] FR-diagnostics-3: The namespace suite transfers data through the local TURN server.
+<li>[x] FR-diagnostics-3: The namespace suite transfers data through the local TURN server.
 </li>
-<li>[ ] FR-diagnostics-4: A fresh clone runs the demo without manual SDP exchange.
+<li>[x] FR-diagnostics-4: A fresh clone runs the demo without manual SDP exchange.
 </li>
-<li>[ ] FR-diagnostics-5: Captured logs contain no test password, secret, or raw SDP.
+<li>[x] FR-diagnostics-5: Captured logs contain no test password, secret, or raw SDP.
 </li>
 </ul>
 <h3 id="diagnostics-out-of-scope">Out of scope</h3>

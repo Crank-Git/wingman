@@ -267,7 +267,7 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>built</td><td>Epic 3: Peer repairs</td></tr>
 <tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>built</td><td>Epic 4: Server operations</td></tr>
 <tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>built</td><td>Epic 5: DynUpdate</td></tr>
-<tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>issued</td><td>Epic 6: Diagnostics</td></tr>
+<tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>built</td><td>Epic 6: Diagnostics</td></tr>
 </table></div>
 <p>Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.</p>
 <h2 id="architecture-stack">Architecture &amp; stack</h2>
@@ -455,6 +455,8 @@ body.rv-open .layout { padding-right:21rem; }
 </ul>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>2026-11-04: Limit doctor to the selected signaling endpoint and omit inapplicable checks. Allow at most one additional second for required DynUpdate cleanup after the probe deadline. Prove relay paths with actual local TURN and isolated namespace transfers.
+</li>
 <li>2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
 </li>
 <li>2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
