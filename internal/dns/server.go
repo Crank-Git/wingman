@@ -123,7 +123,9 @@ func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
 			return pc, ln, nil
 		}
 		// UDP can select a port that TCP already uses.
-		_ = pc.Close()
+		if closeErr := pc.Close(); closeErr != nil {
+			return nil, nil, errors.Join(fmt.Errorf("listen DNS TCP: %w", err), fmt.Errorf("close DNS UDP: %w", closeErr))
+		}
 		if !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
 			return nil, nil, fmt.Errorf("listen DNS TCP: %w", err)
 		}

@@ -111,6 +111,47 @@ func TestServerReturnsOtherBindFailures(t *testing.T) {
 	}
 }
 
+func TestServerStopsAfterListenerCleanupFailure(t *testing.T) {
+	for _, bindCause := range []error{syscall.EADDRINUSE, syscall.EACCES} {
+		t.Run(bindCause.Error(), func(t *testing.T) {
+			pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = pc.Close() })
+			closeCause := errors.New("UDP close fails")
+			packet := &closeFailurePacket{PacketConn: pc, cause: closeCause}
+			s := NewServer()
+			attempts := 0
+			s.listenPacket = func(_, _ string) (net.PacketConn, error) {
+				attempts++
+				return packet, nil
+			}
+			s.listenTCP = func(_, _ string) (net.Listener, error) {
+				return nil, fmt.Errorf("TCP bind fails: %w", bindCause)
+			}
+			err = s.Start(context.Background())
+			if attempts != 1 || packet.closes != 1 {
+				t.Errorf("allocation attempts = %d, close attempts = %d, want one each", attempts, packet.closes)
+			}
+			if !errors.Is(err, closeCause) || !errors.Is(err, bindCause) {
+				t.Errorf("Start error = %v, want cleanup and bind causes", err)
+			}
+		})
+	}
+}
+
+type closeFailurePacket struct {
+	net.PacketConn
+	cause  error
+	closes int
+}
+
+func (pc *closeFailurePacket) Close() error {
+	pc.closes++
+	return pc.cause
+}
+
 func TestServerReleasesListenerPair(t *testing.T) {
 	for _, shutdown := range []string{"Stop", "cancel"} {
 		t.Run(shutdown, func(t *testing.T) {
