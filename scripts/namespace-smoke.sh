@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [[ $# != 2 || $1 != --scenario || ( $2 != dns && $2 != readiness ) ]]; then
-  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns|readiness' >&2
+if [[ $# != 2 || $1 != --scenario || ( $2 != dns && $2 != readiness && $2 != two-peer && $2 != all ) ]]; then
+  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns|readiness|two-peer|all' >&2
   exit 1
 fi
 arch="$(docker info --format '{{.Architecture}}')"
@@ -23,7 +23,7 @@ trap cleanup EXIT
 export BUILDX_CONFIG="${BUILDX_CONFIG:-$work/buildx}"
 CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$work/wingman" ./cmd/wingman
 CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags namespace -o "$work/probe" ./scripts/namespace/probe.go
-if [[ $2 == readiness ]]; then
+if [[ $2 == readiness || $2 == all ]]; then
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -tags namespace -o "$work/readiness-probe" ./scripts/namespace/readiness_probe.go
 fi
 image=wingman-namespace:local
@@ -42,6 +42,16 @@ else
   fi
   echo 'capability probe: privileged passes'
 fi
-docker run --rm --name "$name" --network=none "${caps[@]}" \
-  --mount "type=bind,src=$PWD,dst=/repo,readonly" \
-  --mount "type=bind,src=$work,dst=/bin-fixture,readonly" "$image" "$2"
+scenarios=("$2")
+if [[ $2 == all ]]; then scenarios=(dns readiness two-peer); fi
+for scenario in "${scenarios[@]}"; do
+  echo "namespace scenario: $scenario"
+  if docker run --rm --name "$name" --network=none "${caps[@]}" \
+    --mount "type=bind,src=$PWD,dst=/repo,readonly" \
+    --mount "type=bind,src=$work,dst=/bin-fixture,readonly" "$image" "$scenario"; then
+    echo "namespace scenario: $scenario passes"
+  else
+    echo "namespace scenario: $scenario fails" >&2
+    exit 1
+  fi
+done

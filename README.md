@@ -7,6 +7,9 @@ the signaling handshake — publishing an SDP offer and its answer under a
 rendezvous name — then switches to a direct P2P connection. Once ICE completes,
 DNS is out of the data path.
 
+Read the [deployment guide](docs/deployment.md) for the local demo, authenticated two-peer setup,
+TLS, cancellation, firewall ports, TURN fallback, and isolated Linux acceptance test.
+
 ```
 Peer A  ──offer──►  <room>.<chunk>.offer.sig.example   (DNS)
 Peer B  ──answer──► <room>.<chunk>.answer.sig.example  (DNS)
@@ -50,7 +53,7 @@ An empty library zone preserves unrestricted library behavior. The CLI always su
 Run the isolated Linux acceptance scenario with:
 
 ```sh
-bash scripts/namespace-smoke.sh --scenario dns
+bash scripts/namespace-smoke.sh --scenario all
 ```
 
 The scenario requires Go and a Linux Docker daemon. It builds Linux binaries for the daemon architecture.
