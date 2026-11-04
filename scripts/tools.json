@@ -1,0 +1,6 @@
+{
+  "gocyclo": {
+    "module": "github.com/fzipp/gocyclo",
+    "version": "v0.6.0"
+  }
+}
