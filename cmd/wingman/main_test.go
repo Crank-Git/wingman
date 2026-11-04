@@ -376,6 +376,7 @@ func TestRunPeerHappyPath(t *testing.T) {
 	room := "runpeer-room"
 	received := make(chan string, 1)
 	ready := make(chan struct{})
+	remoteClosed := make(chan struct{})
 	go func() {
 		ans, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman")
 		if err != nil {
@@ -384,6 +385,9 @@ func TestRunPeerHappyPath(t *testing.T) {
 			return
 		}
 		ans.OnMessage(func(data []byte) { received <- string(data) })
+		t.Cleanup(func() { _ = ans.Close() })
+		dc, _ := ans.DataChannel()
+		dc.OnClose(func() { close(remoteClosed) })
 		close(ready)
 	}()
 
@@ -414,6 +418,11 @@ func TestRunPeerHappyPath(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "offer: connected") {
 		t.Fatalf("missing connected notice: %q", out.String())
+	}
+	select {
+	case <-remoteClosed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runPeer leaves the remote channel open after EOF")
 	}
 }
 

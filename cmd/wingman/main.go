@@ -256,6 +256,10 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 	if err != nil {
 		return err
 	}
+	defer func() {
+		// Preserve the chat result if cleanup also fails.
+		_ = sess.Close()
+	}()
 	err = chat(ctx, sess, role, in, out)
 	if opts.metrics {
 		fmt.Fprint(out, m.Text())
