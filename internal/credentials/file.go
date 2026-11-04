@@ -22,7 +22,8 @@ func ReadRestrictedFile(path string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open credential file: %w", err)
 	}
-	defer file.Close()
+	// A close failure cannot invalidate bytes from this read-only descriptor.
+	defer func() { _ = file.Close() }()
 	opened, err := file.Stat()
 	if err != nil {
 		return nil, fmt.Errorf("inspect open credential file: %w", err)

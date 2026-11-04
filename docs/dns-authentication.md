@@ -9,7 +9,7 @@ The JSON file contains one key with these fields:
 | Field | Value |
 |---|---|
 | `name` | A lowercase fully qualified DNS name with a final dot, such as `wingman.example.` |
-| `algorithm` | `hmac-sha256.` |
+| `algorithm` | `hmac-sha256` (also accepts `hmac-sha256.`) |
 | `secret` | A nonempty base64 shared secret |
 
 Create the file through a secure local process. Share the same key with the server and both peers.
@@ -29,6 +29,7 @@ The server rejects unsigned requests and invalid signatures before storage acces
 The signature allows a clock difference of 300 seconds. Synchronize the server and peer clocks.
 
 `dns.LoadTSIGKey` validates the file before listener or transport setup.
+The loader normalizes the algorithm to `hmac-sha256.` for the DNS library.
 Library callers set `Server.TSIGKey` and `Dialer.TSIGKey` before use.
 Keep the key immutable during concurrent use.
 `credentials.ReadRestrictedFile` supplies the shared restricted-file reader for other credential formats.

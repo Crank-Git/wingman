@@ -343,7 +343,7 @@ func buildTransport(opts peerOpts) (sig.Transport, error) {
 		if err != nil {
 			return nil, err
 		}
-		tr := newTransport(opts.addr, opts.zone).(*dns.WriteOverQuery)
+		tr := newTransport(opts.addr, opts.zone)
 		tr.Resolver.(*dns.Dialer).TSIGKey = key
 		return tr, nil
 	case "https":
@@ -433,7 +433,7 @@ func startTurnServer(out io.Writer, cfg turnserver.Config) (*turnserver.Server, 
 }
 
 // newTransport builds the DNS write-over-query transport pointed at srvAddr.
-func newTransport(srvAddr, zone string) sig.Transport {
+func newTransport(srvAddr, zone string) *dns.WriteOverQuery {
 	return &dns.WriteOverQuery{
 		Resolver:     &dns.Dialer{Addr: srvAddr, Net: "udp", Timeout: defaultDialTimeout},
 		Zone:         zone,

@@ -195,6 +195,7 @@ func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 		if s.TSIGKey != nil {
 			t := req.IsTsig()
 			if t == nil || t.Hdr.Name != s.TSIGKey.Name || t.Algorithm != s.TSIGKey.Algorithm || w.TsigStatus() != nil {
+				// A failed rejection write needs no retry because storage remains inaccessible.
 				_ = w.WriteMsg(setRcode(req, dns.RcodeNotAuth))
 				return
 			}

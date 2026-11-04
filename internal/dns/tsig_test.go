@@ -25,6 +25,7 @@ func TestLoadTSIGKey(t *testing.T) {
 		valid      bool
 	}{
 		{"valid", `{"name":"wingman.example.","algorithm":"hmac-sha256.","secret":"c2VjcmV0"}`, 0600, true},
+		{"conventional algorithm", `{"name":"wingman.example.","algorithm":"hmac-sha256","secret":"c2VjcmV0"}`, 0600, true},
 		{"read only", `{"name":"wingman.example.","algorithm":"hmac-sha256.","secret":"c2VjcmV0"}`, 0400, true},
 		{"public", `{}`, 0644, false}, {"unreadable", `{}`, 0200, false},
 		{"malformed", `secret-value`, 0600, false},
@@ -40,12 +41,15 @@ func TestLoadTSIGKey(t *testing.T) {
 			if err := os.WriteFile(path, []byte(tc.body), tc.mode); err != nil {
 				t.Fatal(err)
 			}
-			_, err := LoadTSIGKey(path)
+			key, err := LoadTSIGKey(path)
 			if (err == nil) != tc.valid {
 				t.Fatalf("valid=%v error=%v", tc.valid, err)
 			}
 			if err != nil && strings.Contains(err.Error(), "secret-value") {
 				t.Fatal("error exposes secret")
+			}
+			if err == nil && key.Algorithm != mdns.HmacSHA256 {
+				t.Fatal("algorithm does not use its wire name")
 			}
 		})
 	}
@@ -60,15 +64,60 @@ func TestTSIGRoundTrip(t *testing.T) {
 	for _, network := range []string{"udp", "tcp"} {
 		t.Run(network, func(t *testing.T) {
 			srv := NewServer()
-			srv.TSIGKey = testTSIGKey()
+			key := testTSIGKey()
+			key.Name = strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 61) + "."
+			srv.TSIGKey = key
 			if err := srv.Start(context.Background()); err != nil {
 				t.Fatal(err)
 			}
 			defer srv.Stop()
-			tr := &WriteOverQuery{Resolver: &Dialer{Addr: srv.Addr(), Net: network, TSIGKey: testTSIGKey()}, Zone: "example.com", PollRetries: 1}
-			payload := bytes.Repeat([]byte("a"), 9000)
+			tr := &WriteOverQuery{Resolver: &Dialer{Addr: srv.Addr(), Net: network, TSIGKey: key}, Zone: "example.com", PollRetries: 1}
+			payload := bytes.Repeat([]byte("a"), messageLimit(storageKey{zone: "example.com", room: "signed", kind: sig.Offer}, defaultStorageLimits()))
 			if err := tr.Publish(context.Background(), "signed", sig.Offer, payload); err != nil {
 				t.Fatal(err)
+			}
+			m := queryMsg(sig.PollName("example.com", "signed", sig.Offer))
+			m.SetTsig(key.Name, mdns.HmacSHA256, 300, time.Now().Unix())
+			wire, requestMAC, err := mdns.TsigGenerate(m, key.Secret, "", false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			conn, err := mdns.Dial(network, srv.Addr())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := conn.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := conn.Write(wire); err != nil {
+				t.Fatal(err)
+			}
+			conn.UDPSize = edns0UDPSize
+			wire, err = conn.ReadMsgHeader(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := mdns.TsigVerify(bytes.Clone(wire), key.Secret, requestMAC, false); err != nil {
+				t.Fatal(err)
+			}
+			resp := new(mdns.Msg)
+			if err := resp.Unpack(wire); err != nil {
+				t.Fatal(err)
+			}
+			if err := key.validateReply(resp); err != nil {
+				t.Fatal(err)
+			}
+			budget := mdns.MaxMsgSize
+			if network == "udp" {
+				budget = edns0UDPSize
+			}
+			if len(wire) > budget || resp.Truncated != (network == "udp") {
+				t.Fatalf("signed response size=%d budget=%d truncated=%v", len(wire), budget, resp.Truncated)
 			}
 			got, err := tr.Poll(context.Background(), "signed", sig.Offer)
 			if err != nil || !bytes.Equal(got, payload) {
@@ -85,39 +134,103 @@ func TestTSIGRejectsRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer srv.Stop()
+	tr := &WriteOverQuery{Resolver: &Dialer{Addr: srv.Addr(), TSIGKey: testTSIGKey()}, Zone: "example.com", PollRetries: 1}
+	payload := []byte("private stored message")
+	if err := tr.Publish(context.Background(), "room", sig.Offer, payload); err != nil {
+		t.Fatal(err)
+	}
+	srv.mu.Lock()
+	retained := srv.retainedBytes
+	srv.mu.Unlock()
+	label, err := sig.EncodeLabel([]byte("blocked"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, network := range []string{"udp", "tcp"} {
-		for _, kind := range []string{"unsigned", "unknown", "wrong", "expired"} {
-			t.Run(network+kind, func(t *testing.T) {
-				m := new(mdns.Msg)
-				payload, _ := sig.EncodeLabel([]byte("blocked"))
-				m.SetQuestion(mdns.Fqdn(sig.RendezvousName("example.com", "room", sig.Offer, 0, 1, payload)), mdns.TypeTXT)
-				key := testTSIGKey()
-				stamp := time.Now().Unix()
-				if kind == "unknown" {
-					key.Name = "other.example."
-				}
-				if kind == "wrong" {
-					key.Secret = "b3RoZXI="
-				}
-				if kind == "expired" {
-					stamp -= 3600
-				}
-				c := &mdns.Client{Net: network, TsigSecret: key.secrets()}
-				if kind != "unsigned" {
-					m.SetTsig(key.Name, key.Algorithm, 300, stamp)
-				}
-				resp, _, err := c.Exchange(m, srv.Addr())
-				if err == nil && resp.Rcode != mdns.RcodeNotAuth {
-					t.Fatalf("unauthenticated response: %v", resp)
-				}
-				srv.mu.Lock()
-				defer srv.mu.Unlock()
-				if len(srv.frags) != 0 {
-					t.Fatal("unauthenticated write reaches storage")
-				}
-			})
+		for _, kind := range []string{"unsigned", "unknown", "wrong", "expired", "corrupt MAC"} {
+			for _, name := range []string{
+				sig.RendezvousName("example.com", "blocked", sig.Offer, 0, 1, label),
+				sig.PollName("example.com", "room", sig.Offer),
+			} {
+				t.Run(network+"/"+kind+"/"+name, func(t *testing.T) {
+					resp := rejectedTSIGRequest(t, srv.Addr(), network, name, kind)
+					if resp.Rcode != mdns.RcodeNotAuth || len(resp.Answer) != 0 {
+						t.Fatalf("rejected request exposes a response: %v", resp)
+					}
+					srv.mu.Lock()
+					defer srv.mu.Unlock()
+					if len(srv.frags) != 1 || srv.retainedBytes != retained {
+						t.Fatal("rejected request changes storage")
+					}
+				})
+			}
 		}
 	}
+	got, err := tr.Poll(context.Background(), "room", sig.Offer)
+	if err != nil || !bytes.Equal(got, payload) {
+		t.Fatalf("rejected polls change stored message: %q, %v", got, err)
+	}
+}
+
+func rejectedTSIGRequest(t *testing.T, addr, network, name, kind string) *mdns.Msg {
+	t.Helper()
+	m := queryMsg(name)
+	key := testTSIGKey()
+	stamp := time.Now().Unix()
+	switch kind {
+	case "unknown":
+		key.Name = "other.example."
+	case "wrong":
+		key.Secret = "b3RoZXI="
+	case "expired":
+		stamp -= 3600
+	}
+	var wire []byte
+	var err error
+	if kind == "unsigned" {
+		wire, err = m.Pack()
+	} else {
+		m.SetTsig(key.Name, key.Algorithm, 300, stamp)
+		wire, _, err = mdns.TsigGenerate(m, key.Secret, "", false)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kind == "corrupt MAC" {
+		if err := m.Unpack(wire); err != nil {
+			t.Fatal(err)
+		}
+		mac := m.IsTsig().MAC
+		if mac[0] == '0' {
+			m.IsTsig().MAC = "1" + mac[1:]
+		} else {
+			m.IsTsig().MAC = "0" + mac[1:]
+		}
+		wire, err = m.Pack()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	conn, err := mdns.Dial(network, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := conn.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	if err := conn.SetDeadline(time.Now().Add(2 * time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := conn.Write(wire); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := conn.ReadMsg()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
 }
 
 func TestTSIGRejectsReplies(t *testing.T) {

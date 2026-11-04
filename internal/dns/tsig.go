@@ -34,6 +34,9 @@ func LoadTSIGKey(path string) (*TSIGKey, error) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return nil, errors.New("load TSIG key: trailing JSON data")
 	}
+	if key.Algorithm == "hmac-sha256" {
+		key.Algorithm = dns.HmacSHA256
+	}
 	if err := key.validate(); err != nil {
 		return nil, err
 	}
