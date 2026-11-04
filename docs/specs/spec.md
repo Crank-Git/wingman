@@ -113,7 +113,7 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 ## Feature map
 | Feature | Record | State | Epic |
 |---|---|---|---|
-| Foundation gaps | [foundation](features/00-foundation.md) | issued | Epic 0: Foundation |
+| Foundation gaps | [foundation](features/00-foundation.md) | built | Epic 0: Foundation |
 | Signal framing and names | [framing](features/01-framing.md) | built | Existing behavior |
 | DNS query transport | [dns-existing](features/02-dns-existing.md) | built | Existing behavior |
 | Peer handshake and chat | [peer-existing](features/03-peer-existing.md) | built | Existing behavior |

@@ -2,7 +2,7 @@
 id: foundation
 feature: Foundation gaps
 epic: Epic 0: Foundation
-status: issued
+status: built
 issues: [10, 11, 12, 13, 14, 15]
 mockups: [mockups/00-foundation.html]
 ---
