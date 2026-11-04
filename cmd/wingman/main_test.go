@@ -965,8 +965,11 @@ func TestStartSessionFailureMetrics(t *testing.T) {
 // path works end to end.
 func TestRunPeerHTTPS(t *testing.T) {
 	h := https.NewHandler()
-	srv := httptest.NewServer(h)
+	srv := httptest.NewTLSServer(h)
 	defer srv.Close()
+	previousClient := http.DefaultClient
+	http.DefaultClient = srv.Client()
+	defer func() { http.DefaultClient = previousClient }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

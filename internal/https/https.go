@@ -13,7 +13,9 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,12 +33,15 @@ const defaultPollInterval = 250 * time.Millisecond
 // secret is clearly scoped to wingman's signaling endpoint.
 const secretHeader = "X-Wingman-Secret"
 
-// defaultHandlerTTL bounds how long an unserved SDP message is retained before
-// it is swept. It bounds memory for rooms that never complete a handshake.
+// defaultHandlerTTL expires unserved messages on the next authorized access.
 const defaultHandlerTTL = 30 * time.Second
 
 // route is the single signaling endpoint both peers share.
 const route = "/signaling"
+
+const maxMessageBytes = 16 * 1024
+const maxHandlerEntries = 1024
+const maxHandlerPayloadBytes = 16 * 1024 * 1024
 
 // Transport is a sig.Transport that publishes and polls SDP over HTTPS. It is
 // safe for concurrent use.
@@ -45,6 +50,8 @@ type Transport struct {
 	Client *http.Client
 	// BaseURL is the signaling endpoint, e.g. "https://signaling.example.com".
 	BaseURL string
+	// AllowLoopbackHTTP permits plaintext HTTP for local development and tests.
+	AllowLoopbackHTTP bool
 	// PollInterval is the delay between poll attempts. Defaults to 250ms.
 	PollInterval time.Duration
 	// PollRetries bounds consecutive misses before giving up. 0 means unlimited.
@@ -56,6 +63,8 @@ type Transport struct {
 
 // withDefaults fills in the zero-valued fields.
 func (t *Transport) withDefaults() *Transport {
+	copy := *t
+	t = &copy
 	if t.Client == nil {
 		t.Client = http.DefaultClient
 	}
@@ -63,6 +72,56 @@ func (t *Transport) withDefaults() *Transport {
 		t.PollInterval = defaultPollInterval
 	}
 	return t
+}
+
+// validateURL prevents credentials and SDP from leaving through an unsafe URL.
+func (t *Transport) validateURL(u *url.URL) error {
+	if !u.IsAbs() || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		return fmt.Errorf("https: service URL requires an absolute host without userinfo")
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme == "http" && t.AllowLoopbackHTTP && (strings.EqualFold(u.Hostname(), "localhost") || ip != nil && ip.IsLoopback()) {
+		return nil
+	}
+	return fmt.Errorf("https: service URL requires HTTPS; HTTP requires the loopback development option")
+}
+
+// secureClient preserves the caller policy without changing the caller client.
+func (t *Transport) secureClient() *http.Client {
+	client := *t.Client
+	policy := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := t.validateURL(req.URL); err != nil {
+			return err
+		}
+		if t.Secret != "" && !sameOrigin(req.URL, via[0].URL) {
+			return fmt.Errorf("https: cross-origin redirect with credentials")
+		}
+		if policy != nil {
+			return policy(req, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &client
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	port := func(u *url.URL) string {
+		if u.Port() != "" {
+			return u.Port()
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	return a.Scheme == b.Scheme && strings.EqualFold(a.Hostname(), b.Hostname()) && port(a) == port(b)
 }
 
 // endpoint builds the signaling URL for a room/kind pair.
@@ -77,10 +136,13 @@ func (t *Transport) Publish(ctx context.Context, room string, k sig.Kind, msg []
 	if err != nil {
 		return fmt.Errorf("https: new request: %w", err)
 	}
+	if err := t.validateURL(req.URL); err != nil {
+		return err
+	}
 	if t.Secret != "" {
 		req.Header.Set(secretHeader, t.Secret)
 	}
-	resp, err := t.Client.Do(req)
+	resp, err := t.secureClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("https: publish: %w", err)
 	}
@@ -107,10 +169,13 @@ func (t *Transport) Poll(ctx context.Context, room string, k sig.Kind) ([]byte, 
 		if err != nil {
 			return nil, fmt.Errorf("https: new request: %w", err)
 		}
+		if err := t.validateURL(req.URL); err != nil {
+			return nil, err
+		}
 		if t.Secret != "" {
 			req.Header.Set(secretHeader, t.Secret)
 		}
-		resp, err := t.Client.Do(req)
+		resp, err := t.secureClient().Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("https: poll: %w", err)
 		}
@@ -191,12 +256,17 @@ type entry struct {
 // Handler is an http.Handler that stores one SDP message per (room, kind) and
 // serves it over HTTPS. It is safe for concurrent use.
 //
-// Two mechanisms bound memory: a served message is deleted on read (SDP is
-// one-shot), and unserved messages older than TTL are swept on access so rooms
-// that never complete a handshake cannot grow the map without bound.
+// POST accepts at most 16 KiB per message. Larger bodies return 413 without storage.
+// Capacity is 1024 entries and 16 MiB of payloads. Excess entries or bytes return 503.
+// GET consumes a stored message. Authorized access sweeps messages older than TTL.
+// A failed response write still consumes the message. Start a new room exchange after a lost response.
+// Rooms are case-sensitive single labels of 1 to 63 bytes without dots,
+// backslash escapes, or surrounding whitespace. Underscores and edge hyphens are valid.
 type Handler struct {
-	mu   sync.Mutex
-	msgs map[string]entry
+	// mu guards msgs and payloadBytes so admission and replacement share one limit.
+	mu           sync.Mutex
+	msgs         map[string]entry
+	payloadBytes int
 	// TTL bounds how long an unserved message is retained. Zero means the
 	// default; entries older than TTL are swept on access.
 	TTL time.Duration
@@ -223,10 +293,29 @@ func (h *Handler) sweep(now time.Time) {
 	h.mu.Lock()
 	for k, e := range h.msgs {
 		if now.Sub(e.at) > h.TTL {
-			delete(h.msgs, k)
+			h.removeLocked(k)
 		}
 	}
 	h.mu.Unlock()
+}
+
+func (h *Handler) store(key string, body []byte) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	old, exists := h.msgs[key]
+	bytes := h.payloadBytes - len(old.data) + len(body)
+	if !exists && len(h.msgs) >= maxHandlerEntries || bytes > maxHandlerPayloadBytes {
+		return false
+	}
+	h.msgs[key] = entry{data: body, at: time.Now()}
+	h.payloadBytes = bytes
+	return true
+}
+
+// removeLocked requires mu so removal releases the same quota that admission uses.
+func (h *Handler) removeLocked(key string) {
+	h.payloadBytes -= len(h.msgs[key].data)
+	delete(h.msgs, key)
 }
 
 // ServeHTTP handles POST (store) and GET (retrieve) on the /signaling route.
@@ -236,6 +325,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// Reject unauthorized requests before they read bodies or change retained entries.
+	if h.Secret != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get(secretHeader)), []byte(h.Secret)) != 1 {
+		http.Error(w, "https: unauthorized", http.StatusUnauthorized)
+		return
+	}
 	q := r.URL.Query()
 	room := q.Get("room")
 	kind := q.Get("kind")
@@ -243,38 +337,39 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "https: room and kind query params are required", http.StatusBadRequest)
 		return
 	}
+	if len(room) > 63 || strings.ContainsAny(room, ".\\") || strings.TrimSpace(room) != room {
+		http.Error(w, "https: invalid room", http.StatusBadRequest)
+		return
+	}
 	if _, err := sig.ParseKind(kind); err != nil {
 		http.Error(w, "https: invalid kind", http.StatusBadRequest)
 		return
 	}
-	// Bound memory: drop any entries that have outlived the TTL.
 	h.sweep(time.Now())
 
-	// Authenticate the channel when a secret is configured. The constant-time
-	// comparison avoids leaking the secret via timing.
-	if h.Secret != "" {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get(secretHeader)), []byte(h.Secret)) != 1 {
-			http.Error(w, "https: unauthorized", http.StatusUnauthorized)
-			return
-		}
-	}
 	key := room + "/" + kind
 
 	switch r.Method {
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxMessageBytes+1))
+		if len(body) > maxMessageBytes {
+			http.Error(w, "https: message too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		if err != nil {
 			http.Error(w, "https: read body", http.StatusBadRequest)
 			return
 		}
-		h.mu.Lock()
-		h.msgs[key] = entry{data: body, at: time.Now()}
-		h.mu.Unlock()
+		if !h.store(key, body) {
+			http.Error(w, "https: capacity exceeded", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 
 	case http.MethodGet:
 		h.mu.Lock()
 		e, ok := h.msgs[key]
+		h.removeLocked(key)
 		h.mu.Unlock()
 		if !ok {
 			http.Error(w, "https: not found", http.StatusNotFound)
@@ -282,14 +377,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.Header().Set("Content-Type", "application/sdp")
 		w.WriteHeader(http.StatusOK)
+		// A failed delivery cannot restore the message without risking duplicate consumption.
 		_, _ = w.Write(e.data)
-		// SDP is one-shot: remove it once served so a retried GET does not
-		// return a stale message.
-		h.mu.Lock()
-		delete(h.msgs, key)
-		h.mu.Unlock()
 
 	default:
+		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "https: method not allowed", http.StatusMethodNotAllowed)
 	}
 }

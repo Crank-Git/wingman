@@ -25,7 +25,7 @@ func TestTransportRoundTrip(t *testing.T) {
 	h := NewHandler()
 	srv := newTestServer(t, h)
 
-	tr := &Transport{
+	tr := &Transport{AllowLoopbackHTTP: true,
 		Client:       srv.Client(),
 		BaseURL:      srv.URL,
 		PollInterval: 5 * time.Millisecond,
@@ -49,7 +49,7 @@ func TestPollNotReadyRetries(t *testing.T) {
 	h := NewHandler()
 	srv := newTestServer(t, h)
 
-	tr := &Transport{
+	tr := &Transport{AllowLoopbackHTTP: true,
 		Client:       srv.Client(),
 		BaseURL:      srv.URL,
 		PollInterval: 5 * time.Millisecond,
@@ -67,7 +67,7 @@ func TestPollContextCancel(t *testing.T) {
 	h := NewHandler()
 	srv := newTestServer(t, h)
 
-	tr := &Transport{
+	tr := &Transport{AllowLoopbackHTTP: true,
 		Client:       srv.Client(),
 		BaseURL:      srv.URL,
 		PollInterval: 10 * time.Millisecond,
@@ -91,7 +91,7 @@ func TestPublishRejectsNon200(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL}
 	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err == nil {
 		t.Fatal("expected error when server returns non-200")
 	}
@@ -101,7 +101,7 @@ func TestPublishRequiresClient(t *testing.T) {
 	// A nil client must surface an error rather than panic.
 	h := NewHandler()
 	srv := newTestServer(t, h)
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL}
 	if err := tr.Publish(context.Background(), "r", sig.Offer, []byte("x")); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
@@ -140,7 +140,7 @@ func TestPublishClientError(t *testing.T) {
 	addr := srv.Listener.Addr().String()
 	srv.Close()
 
-	tr := &Transport{Client: http.DefaultClient, BaseURL: "http://" + addr}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: http.DefaultClient, BaseURL: "http://" + addr}
 	if err := tr.Publish(context.Background(), "r", sig.Offer, []byte("x")); err == nil {
 		t.Fatal("expected a dial error against a closed server")
 	}
@@ -153,7 +153,7 @@ func TestPollServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL, PollRetries: 1}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL, PollRetries: 1}
 	if _, err := tr.Poll(context.Background(), "r", sig.Offer); err == nil {
 		t.Fatal("expected an error for a 500 response")
 	}
@@ -165,7 +165,7 @@ func TestPublishDefaultsNilClient(t *testing.T) {
 	h := NewHandler()
 	srv := newTestServer(t, h)
 
-	tr := &Transport{BaseURL: srv.URL} // Client left nil
+	tr := &Transport{AllowLoopbackHTTP: true, BaseURL: srv.URL} // Client left nil
 	if err := tr.Publish(context.Background(), "r", sig.Offer, []byte("x")); err != nil {
 		t.Fatalf("Publish with nil client: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestPollReadError(t *testing.T) {
 	rt := roundTripFunc(func(_ *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: http.StatusOK, Body: errBody{}, Header: make(http.Header)}, nil
 	})
-	tr := &Transport{Client: newRoundTripClient(rt), BaseURL: "http://x"}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: newRoundTripClient(rt), BaseURL: "https://x"}
 	if _, err := tr.Poll(context.Background(), "r", sig.Offer); err == nil {
 		t.Fatal("expected a body-read error")
 	}
@@ -362,6 +362,7 @@ func TestHandlerSweepsStaleEntries(t *testing.T) {
 	h.mu.Lock()
 	h.msgs["fresh/offer"] = entry{data: []byte("FRESH"), at: time.Now()}
 	h.msgs["stale/offer"] = entry{data: []byte("STALE"), at: time.Now().Add(-2 * time.Second)}
+	h.payloadBytes = len("FRESH") + len("STALE")
 	h.mu.Unlock()
 
 	h.sweep(time.Now())
@@ -440,7 +441,7 @@ func TestTransportSendsSecret(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL, Secret: "s3cr3t"}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL, Secret: "s3cr3t"}
 	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
@@ -459,7 +460,7 @@ func TestTransportOmitsSecretWhenUnset(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL}
 	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err != nil {
 		t.Fatalf("Publish: %v", err)
 	}
@@ -474,7 +475,7 @@ func TestTransportSecretMismatchFails(t *testing.T) {
 	h := NewHandler()
 	h.Secret = "right"
 	srv := newTestServer(t, h)
-	tr := &Transport{Client: srv.Client(), BaseURL: srv.URL, Secret: "wrong"}
+	tr := &Transport{AllowLoopbackHTTP: true, Client: srv.Client(), BaseURL: srv.URL, Secret: "wrong"}
 	if err := tr.Publish(context.Background(), "room1", sig.Offer, []byte("x")); err == nil {
 		t.Fatal("expected publish to fail on secret mismatch")
 	}
