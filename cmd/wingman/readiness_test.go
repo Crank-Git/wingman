@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -173,8 +176,22 @@ func TestServeRollsBackEachBindFailure(t *testing.T) {
 			args = append(args, flag, tcp.Addr().String())
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			if err := runServe(ctx, args); err == nil || !strings.Contains(err.Error(), "address already in use") {
-				t.Fatalf("bind cause: %v", err)
+			reader, writer, err := os.Pipe()
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer reader.Close()
+			previous := os.Stdout
+			os.Stdout = writer
+			serveErr := runServe(ctx, args)
+			os.Stdout = previous
+			writer.Close()
+			output, err := io.ReadAll(reader)
+			if err != nil || len(output) != 0 {
+				t.Fatalf("partial startup reports addresses: %q, %v", output, err)
+			}
+			if serveErr == nil || !strings.Contains(serveErr.Error(), "address already in use") {
+				t.Fatalf("bind cause: %v", serveErr)
 			}
 			for _, a := range []string{dnsAddr, tlsAddr, metricsAddr} {
 				ln, err := net.Listen("tcp", a)
@@ -189,5 +206,16 @@ func TestServeRollsBackEachBindFailure(t *testing.T) {
 			}
 			udp.Close()
 		})
+	}
+}
+
+func TestDrainHTTPPreservesImmediateServeAndEarlierCauses(t *testing.T) {
+	serveCause := errors.New("immediate serve failure")
+	prior := errors.New("startup failure")
+	served := make(chan error, 1)
+	served <- serveCause
+	err := drainHTTP(&http.Server{}, served, prior)
+	if !errors.Is(err, serveCause) || !errors.Is(err, prior) {
+		t.Fatalf("serve causes: %v", err)
 	}
 }

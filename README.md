@@ -95,6 +95,11 @@ Without a secret file, the server requires `--local-demo` and a literal loopback
 The TLS listener uses TLS 1.2 or newer and the system certificate trust policy on clients.
 Its header, read, write, and idle timeouts are 5, 15, 15, and 60 seconds.
 The TLS listener is independent from `--metrics-addr`.
+Both HTTP listeners expose `/healthz` and `/readyz` after all requested listeners bind.
+`/healthz` returns 200 after startup. `/readyz` returns 503 when shutdown starts.
+For a DNS-only server, set `--metrics-addr 127.0.0.1:9090` to expose these endpoints over HTTP.
+Wingman reports actual listener addresses after all requested binds succeed.
+If a bind fails, Wingman releases earlier listeners and exits with an error.
 
 The HTTPS transport requires an absolute HTTPS service URL without URL userinfo.
 It rejects cross-origin redirects when `--signaling-secret` supplies credentials.
