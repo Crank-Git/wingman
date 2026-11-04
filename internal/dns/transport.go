@@ -48,8 +48,14 @@ func (t *WriteOverQuery) withDefaults() *WriteOverQuery {
 
 // Publish fragments msg and writes each fragment as a DNS query.
 // If ctx is cancelled, Publish returns its error before the next resolver call.
+// Publish rejects messages above the identity's byte limit before fragmentation.
 func (t *WriteOverQuery) Publish(ctx context.Context, room string, k sig.Kind, msg []byte) error {
 	t.withDefaults()
+	key := storageKey{zone: canonicalReplyName(t.Zone), room: strings.ToLower(room), kind: k}
+	limit := messageLimit(key, defaultStorageLimits())
+	if len(msg) > limit {
+		return fmt.Errorf("wingman: publish message has %d bytes; limit for %s is %d bytes", len(msg), sig.PollName(key.zone, key.room, key.kind), limit)
+	}
 	frags, err := sig.Fragments(msg, 0)
 	if err != nil {
 		return err
