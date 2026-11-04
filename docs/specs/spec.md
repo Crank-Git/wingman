@@ -230,14 +230,14 @@ No environment-variable names occur in the current application configuration. CL
 
 Current DNS defaults use example.com and loopback addresses. Library polling defaults to 250 ms; CLI polling uses 50 ms.
 
-Existing local smoke path:
+Local smoke path after server repairs:
 ```sh
 go build -o /tmp/wingman ./cmd/wingman
-/tmp/wingman serve
+/tmp/wingman serve --local-demo
 /tmp/wingman offer --addr 127.0.0.1:PORT --room demo
 /tmp/wingman answer --addr 127.0.0.1:PORT --room demo
 ```
-Replace PORT with the address printed by serve. Run each long-lived command in a separate terminal.
+Replace PORT with the port printed by serve. Run each long-lived command in a separate terminal.
 
 The local smoke path uses no fixed seed data. Each test creates its own room or fixture.
 
@@ -313,10 +313,11 @@ Every milestone leaves tests green. The operator approves each promotion from de
 - WithMetrics and the ICE callback use inconsistent locking. Treat a targeted regression test as necessary evidence before the repair.
 - A real DNS server retains dynamic records after cache TTL expiry. Epic 5 provides cleanup and documents interrupted exchanges.
 - TSIG proves knowledge of a shared key. It does not encrypt DNS payloads or protect against an authorized malicious peer.
-- Secure TURN default-port behavior needs comparison with the pinned URI parser before any semantic change.
+- The pinned URI parser comparison confirms that a portless turns URI uses 5349. Explicit ports remain unchanged. See [#90](https://github.com/Crank-Git/wingman/issues/90).
 - No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 
 ## Changelog
+- 2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
 - 2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
 - 2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
 - 2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
@@ -399,3 +400,4 @@ Sub-issue bodies record dependencies within each epic. GitHub records each child
 | CI recovery | [#74](https://github.com/Crank-Git/wingman/issues/74) | [#69](https://github.com/Crank-Git/wingman/issues/69), [#73](https://github.com/Crank-Git/wingman/issues/73) |
 | Concurrent coverage profiles | [#16](https://github.com/Crank-Git/wingman/issues/16) | [#62](https://github.com/Crank-Git/wingman/issues/62) |
 | Ephemeral DNS port recovery | [#27](https://github.com/Crank-Git/wingman/issues/27) | [#84](https://github.com/Crank-Git/wingman/issues/84) |
+| Server deployment repairs | [#33](https://github.com/Crank-Git/wingman/issues/33) | [#90](https://github.com/Crank-Git/wingman/issues/90), [#91](https://github.com/Crank-Git/wingman/issues/91), [#98](https://github.com/Crank-Git/wingman/issues/98) |

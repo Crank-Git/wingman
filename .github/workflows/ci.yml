@@ -33,3 +33,6 @@ jobs:
         env:
           GOCACHE: ${{ runner.temp }}/wingman-go-cache
         run: bash scripts/verify.sh
+
+      - name: Namespace acceptance
+        run: bash scripts/namespace-smoke.sh --scenario all

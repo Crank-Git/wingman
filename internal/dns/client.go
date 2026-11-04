@@ -20,6 +20,7 @@ type Dialer struct {
 	Addr    string
 	Net     string
 	Timeout time.Duration
+	TSIGKey *TSIGKey // Set before concurrent use.
 }
 
 func (d *Dialer) withDefaults() *Dialer {
@@ -39,15 +40,33 @@ func (d *Dialer) withDefaults() *Dialer {
 // response is truncated (TC bit). TCP has no size limit, so a poll that returns
 // many fragments rides over TCP while ordinary queries stay on UDP.
 func (d *Dialer) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
+	if d.TSIGKey != nil {
+		if err := d.TSIGKey.validate(); err != nil {
+			return nil, err
+		}
+		m = m.Copy()
+		m.SetTsig(d.TSIGKey.Name, d.TSIGKey.Algorithm, 300, time.Now().Unix())
+	}
 	c := d.Client()
-	resp, _, err := c.ExchangeContext(ctx, m, d.withDefaults().Addr)
+	resp, _, err := c.ExchangeContext(ctx, m.Copy(), d.withDefaults().Addr)
 	if err != nil {
 		return nil, err
 	}
+	if d.TSIGKey != nil {
+		if err := d.TSIGKey.validateReply(resp); err != nil {
+			return nil, err
+		}
+	}
 	if resp.Truncated {
-		tc := &dns.Client{Net: "tcp", Timeout: d.withDefaults().Timeout}
-		resp, _, err = tc.ExchangeContext(ctx, m, d.withDefaults().Addr)
+		tc := d.Client()
+		tc.Net = "tcp"
+		resp, _, err = tc.ExchangeContext(ctx, m.Copy(), d.withDefaults().Addr)
 		if err != nil {
+			return nil, err
+		}
+	}
+	if d.TSIGKey != nil {
+		if err := d.TSIGKey.validateReply(resp); err != nil {
 			return nil, err
 		}
 	}
@@ -57,5 +76,5 @@ func (d *Dialer) Exchange(ctx context.Context, m *dns.Msg) (*dns.Msg, error) {
 // Client returns a dns.Client configured with the dialer's settings.
 func (d *Dialer) Client() *dns.Client {
 	d = d.withDefaults()
-	return &dns.Client{Net: d.Net, Timeout: d.Timeout}
+	return &dns.Client{Net: d.Net, Timeout: d.Timeout, TsigSecret: d.TSIGKey.secrets()}
 }

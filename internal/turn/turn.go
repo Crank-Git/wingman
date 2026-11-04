@@ -13,8 +13,10 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-// defaultPort is the conventional port for STUN and TURN when a URI omits one.
+// RFC 7065 section 3.2 assigns separate defaults for TURN and TURN over TLS.
 const defaultPort = 3478
+
+const defaultSecurePort = 5349
 
 // validSchemes are the URI schemes this package understands. stun and turn are
 // UDP/TCP by default; turns requires TLS.
@@ -35,9 +37,10 @@ type Server struct {
 	Password string
 }
 
-// Parse parses and validates a single turn/turns/stun URI, normalizing it so
-// it always carries an explicit port. The returned Server is ready to be added
-// to a Config or passed to ICEservers.
+// Parse returns a validated Server with an explicit port in its URI.
+// An omitted port uses 5349 for turns and 3478 for turn or stun.
+// Username and password supply the TURN credentials.
+// Invalid schemes, hosts, or ports return an error.
 func Parse(uri, username, password string) (*Server, error) {
 	uri = strings.TrimSpace(uri)
 	if uri == "" {
@@ -60,6 +63,9 @@ func Parse(uri, username, password string) (*Server, error) {
 		return nil, fmt.Errorf("turn: invalid host %q in %q", host, uri)
 	}
 	p := defaultPort
+	if scheme == "turns" {
+		p = defaultSecurePort
+	}
 	if hasPort {
 		var perr error
 		if p, perr = strconv.Atoi(portStr); perr != nil || p < 1 || p > 65535 {
@@ -151,7 +157,7 @@ func ParseServers(uris []string, username, password string) ([]Server, error) {
 }
 
 // splitHostPort splits "host:port" into its parts. hasPort reports whether a
-// port was present at all (an omitted port falls back to defaultPort). The
+// port was present at all. Parse selects the default for an omitted port. The
 // returned host is bare (IPv6 brackets stripped); callers that emit a URI must
 // re-bracket IPv6 literals (see Parse).
 func splitHostPort(rest string) (host, portStr string, hasPort bool) {

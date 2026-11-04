@@ -351,12 +351,12 @@ body.rv-open .layout { padding-right:21rem; }
 <h2 id="environments-config">Environments &amp; config</h2>
 <p>No environment-variable names occur in the current application configuration. CLI flags supply settings.</p>
 <p>Current DNS defaults use example.com and loopback addresses. Library polling defaults to 250 ms; CLI polling uses 50 ms.</p>
-<p>Existing local smoke path:</p>
+<p>Local smoke path after server repairs:</p>
 <pre class="code"><code>go build -o /tmp/wingman ./cmd/wingman
-/tmp/wingman serve
+/tmp/wingman serve --local-demo
 /tmp/wingman offer --addr 127.0.0.1:PORT --room demo
 /tmp/wingman answer --addr 127.0.0.1:PORT --room demo</code></pre>
-<p>Replace PORT with the address printed by serve. Run each long-lived command in a separate terminal.</p>
+<p>Replace PORT with the port printed by serve. Run each long-lived command in a separate terminal.</p>
 <p>The local smoke path uses no fixed seed data. Each test creates its own room or fixture.</p>
 <p>The roadmap uses secret files for new credentials. Store only file paths and variable names in public documentation.</p>
 <p>No deployed domain or host appears in the repository inventory. The initial target is a self-hosted CLI service with a deployment guide.</p>
@@ -448,13 +448,15 @@ body.rv-open .layout { padding-right:21rem; }
 </li>
 <li>TSIG proves knowledge of a shared key. It does not encrypt DNS payloads or protect against an authorized malicious peer.
 </li>
-<li>Secure TURN default-port behavior needs comparison with the pinned URI parser before any semantic change.
+<li>The pinned URI parser comparison confirms that a portless turns URI uses 5349. Explicit ports remain unchanged. See <a href="https://github.com/Crank-Git/wingman/issues/90">#90</a>.
 </li>
 <li>No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 </li>
 </ul>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
+</li>
 <li>2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
 </li>
 <li>2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
@@ -542,6 +544,7 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><td>CI recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/74">#74</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/69">#69</a>, <a href="https://github.com/Crank-Git/wingman/issues/73">#73</a></td></tr>
 <tr><td>Concurrent coverage profiles</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/62">#62</a></td></tr>
 <tr><td>Ephemeral DNS port recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/84">#84</a></td></tr>
+<tr><td>Server deployment repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/90">#90</a>, <a href="https://github.com/Crank-Git/wingman/issues/91">#91</a>, <a href="https://github.com/Crank-Git/wingman/issues/98">#98</a></td></tr>
 </table></div><nav class="pager">
 <span></span>
 <a href="html/page-audit.html">Repository audit and evidence &rarr;</a>

@@ -7,7 +7,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent.parent
-STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests",
+STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests", "namespace-tests",
           "vet", "coverage", "race", "build"]
 
 
@@ -52,7 +52,8 @@ if [[ "${FAIL_STAGE:-}" == "$stage" ]]; then exit 7; fi
             '    log.write("complexity\\n")\n'
             'sys.exit(7 if os.environ.get("FAIL_STAGE") == "complexity" else 0)\n')
         for name, stage in [("test_quality.py", "quality-tests"),
-                            ("test_verify.py", "verify-tests")]:
+                            ("test_verify.py", "verify-tests"),
+                            ("test_namespace.py", "namespace-tests")]:
             (scripts / name).write_text(
                 'import os, unittest\n'
                 'class Fixture(unittest.TestCase):\n'
@@ -135,6 +136,14 @@ func TestConcurrentWrites(t *testing.T) {
 
 
 class WorkflowChecks(unittest.TestCase):
+    def test_ci_runs_namespace_acceptance_after_verification(self):
+        workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+        command = "run: bash scripts/namespace-smoke.sh --scenario all"
+        self.assertEqual(workflow.count(command), 1)
+        step = workflow.split("      - name: Namespace acceptance\n")[1]
+        self.assertEqual(step.strip(), command)
+        self.assertLess(workflow.index("run: bash scripts/verify.sh"), workflow.index(command))
+
     def test_ci_uses_the_verification_entry_point(self):
         workflow = (ROOT / ".github/workflows/ci.yml").read_text()
         self.assertIn("go-version-file: go.mod", workflow)

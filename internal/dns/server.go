@@ -14,6 +14,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
 
@@ -22,7 +23,11 @@ import (
 // are stored; poll queries (the room poll name) return the stored fragments as
 // TXT records. It is safe for concurrent use.
 type Server struct {
-	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
+	Metrics       *metrics.Metrics // Set before Start or requests. Nil disables DNS metrics.
+	ListenAddr    string           // Set before Start. Empty selects 127.0.0.1:0.
+	Zone          string           // Set before Start or requests. Empty accepts all zones for library callers.
+	TSIGKey       *TSIGKey         // Set before Start or requests.
+	mu            sync.Mutex       // mu guards entries, fragments, and byte counts.
 	frags         map[storageKey]*fragmentEntry
 	retainedBytes int
 	limits        storageLimits // Set limits before Start or requests.
@@ -77,7 +82,7 @@ func (s *Server) Addr() string {
 	return s.addr
 }
 
-// Start serves DNS on UDP and TCP listeners at the same loopback address.
+// Start serves DNS on UDP and TCP listeners at the configured address.
 // Context cancellation stops the listeners and the one-second expiry sweep.
 // Entries expire 120 seconds after their first fragment arrives.
 // Start tries at most ten UDP ports if TCP reports an address collision.
@@ -88,13 +93,21 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.stop != nil {
 		return fmt.Errorf("start DNS server: call Stop before another Start")
 	}
+	if s.TSIGKey != nil {
+		if err := s.TSIGKey.validate(); err != nil {
+			return err
+		}
+	}
+	if err := s.validateConfig(); err != nil {
+		return err
+	}
 	pc, tcpLn, err := s.listenPair()
 	if err != nil {
 		return err
 	}
 	s.addr = pc.LocalAddr().String()
-	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize)}
-	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize)}
+	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize), TsigSecret: s.TSIGKey.secrets()}
+	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize), TsigSecret: s.TSIGKey.secrets()}
 
 	if err := activateListener(s.dns); err != nil {
 		_ = pc.Close()
@@ -113,8 +126,13 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
+	address := s.ListenAddr
+	if address == "" {
+		address = "127.0.0.1:0"
+	}
+	_, port, _ := net.SplitHostPort(address) // validateConfig checks the address before bind.
 	for attempt := 1; ; attempt++ {
-		pc, err := s.listenPacket("udp", "127.0.0.1:0")
+		pc, err := s.listenPacket("udp", address)
 		if err != nil {
 			return nil, nil, fmt.Errorf("listen DNS UDP: %w", err)
 		}
@@ -126,7 +144,7 @@ func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
 		if closeErr := pc.Close(); closeErr != nil {
 			return nil, nil, errors.Join(fmt.Errorf("listen DNS TCP: %w", err), fmt.Errorf("close DNS UDP: %w", closeErr))
 		}
-		if !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
+		if port != "0" || !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
 			return nil, nil, fmt.Errorf("listen DNS TCP: %w", err)
 		}
 	}
@@ -176,6 +194,7 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 	if entry := s.frags[key]; entry != nil && !now.Before(entry.createdAt.Add(fragmentLifetime)) {
 		s.retainedBytes -= entry.bytes
 		delete(s.frags, key)
+		s.updateRetainedMetrics()
 	}
 }
 
@@ -185,7 +204,22 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 // truncation, since TCP has no size limit).
 func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
-		s.handle(w, req, truncateSize)
+		if s.Metrics != nil {
+			w = &metricsWriter{ResponseWriter: w, collector: s.Metrics, operation: queryOperation(req)}
+		}
+		responseSize := truncateSize
+		if s.TSIGKey != nil {
+			t := req.IsTsig()
+			if t == nil || t.Hdr.Name != s.TSIGKey.Name || t.Algorithm != s.TSIGKey.Algorithm || w.TsigStatus() != nil {
+				// A failed rejection write needs no retry because storage remains inaccessible.
+				_ = w.WriteMsg(setRcode(req, dns.RcodeNotAuth))
+				return
+			}
+			w = &signedWriter{ResponseWriter: w, key: s.TSIGKey}
+			// Reserve the signature before truncation because Truncate skips signed messages.
+			responseSize -= 128 + len(s.TSIGKey.Name)
+		}
+		s.handle(w, req, responseSize)
 	}
 }
 
@@ -203,6 +237,11 @@ func (s *Server) handle(w dns.ResponseWriter, req *dns.Msg, truncateSize int) {
 	}
 
 	if parsed, err := sig.ParseRendezvousName(name); err == nil {
+		if !s.servesZone(parsed.Zone) {
+			// A failed refusal write cannot grant storage access.
+			_ = w.WriteMsg(setRcode(req, dns.RcodeRefused))
+			return
+		}
 		s.storeFragment(w, req, parsed)
 		return
 	}
@@ -253,6 +292,7 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 		entry.bytes += len(payload)
 		s.retainedBytes += len(payload)
 		entry.fragments[parsed.Seq] = frag
+		s.updateRetainedMetrics()
 	}
 	s.mu.Unlock()
 
@@ -311,6 +351,11 @@ func (s *Server) respondPoll(w dns.ResponseWriter, req *dns.Msg, name string, tr
 		return
 	}
 	zone := strings.Join(fields[3:], ".")
+	if !s.servesZone(zone) {
+		// A failed refusal write cannot grant storage access.
+		_ = w.WriteMsg(setRcode(req, dns.RcodeRefused))
+		return
+	}
 	key := storageKey{zone: zone, room: room, kind: kind}
 
 	s.mu.Lock()
@@ -375,4 +420,14 @@ func (s *Server) Stop() {
 		<-s.done
 		s.stop = nil
 	}
+}
+
+type signedWriter struct {
+	dns.ResponseWriter
+	key *TSIGKey
+}
+
+func (w *signedWriter) WriteMsg(m *dns.Msg) error {
+	m.SetTsig(w.key.Name, w.key.Algorithm, 300, time.Now().Unix())
+	return w.ResponseWriter.WriteMsg(m)
 }
