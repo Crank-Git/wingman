@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: DNS isolation and resource limits</h1>
-<p class="meta">Epic 1: DNS repairs &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 1: DNS repairs &nbsp; <span class="badge">built</span></p>
 <h2 id="dns-repairs-dns-isolation-and-resource-limits">DNS isolation and resource limits</h2>
 <h3 id="dns-repairs-purpose">Purpose</h3>
 <p>Repair the DNS transport before any public listener becomes available.</p>
@@ -210,17 +210,17 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Test mixed-case names, zone collisions, incomplete publication, reordered fragments, and UDP truncation. After expiry, a new message may reuse the room. Concurrent publications cannot combine fragments from different totals. Authentication remains a separate server requirement. CRC alone provides no authorization.</p>
 <h3 id="dns-repairs-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-dns-repairs-1: The same room in two zones cannot read or overwrite the other zone.
+<li>[x] FR-dns-repairs-1: The same room in two zones cannot read or overwrite the other zone.
 </li>
-<li>[ ] FR-dns-repairs-2: Unsupported questions leave the store unchanged.
+<li>[x] FR-dns-repairs-2: Unsupported questions leave the store unchanged.
 </li>
-<li>[ ] FR-dns-repairs-3: A clock-controlled test removes an idle entry after expiry.
+<li>[x] FR-dns-repairs-3: A clock-controlled test removes an idle entry after expiry.
 </li>
-<li>[ ] FR-dns-repairs-4: Capacity tests reject writes without exceeding configured bounds.
+<li>[x] FR-dns-repairs-4: Capacity tests reject writes without exceeding configured bounds.
 </li>
-<li>[ ] FR-dns-repairs-5: Injected TXT names with another room, kind, or zone return an identity error.
+<li>[x] FR-dns-repairs-5: Injected TXT names with another room, kind, or zone return an identity error.
 </li>
-<li>[ ] FR-dns-repairs-6: A cancelled publish performs no further resolver calls.
+<li>[x] FR-dns-repairs-6: A cancelled publish performs no further resolver calls.
 </li>
 </ul>
 <h3 id="dns-repairs-out-of-scope">Out of scope</h3>
