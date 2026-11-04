@@ -262,6 +262,10 @@ The relay scenario uses the same lifecycle with a restricted TURN password file 
 Run it separately with `bash scripts/namespace-smoke.sh --scenario relay`.
 Private routes block each peer from the other peer address.
 Server policy rules allow DNS and TURN control replies, then prohibit relay sockets from the peer host addresses.
+The prohibit rules select UDP. Other protocols retain routes for Linux source validation.
+Protocol-independent prohibit rules can reject incoming DNS requests when the kernel validates the reverse route.
+The fixture uses UDP TURN, so UDP rules also block its relay sockets from peer host candidates.
+The scenario checks control routes and rejects an available UDP route from a relay port.
 Both peers must receive the known text and report `selected pair: local=relay remote=relay`.
 Missing statistics or another selected type fails the scenario.
 Cleanup removes children, credentials, logs, rooms, bridge, namespaces, container, and temporary binaries after success or failure.

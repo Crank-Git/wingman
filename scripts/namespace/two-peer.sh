@@ -44,8 +44,18 @@ if [[ $1 == relay ]]; then
   ip -n server rule add priority 100 ipproto 17 sport 3478 lookup main
   ip -n server rule add priority 101 ipproto 17 sport 5353 lookup main
   ip -n server rule add priority 102 ipproto 6 sport 5353 lookup main
-  ip -n server rule add priority 110 to 10.203.0.2/32 prohibit
-  ip -n server rule add priority 111 to 10.203.0.3/32 prohibit
+  # Source validation needs a route without a transport protocol or source port.
+  ip -n server rule add priority 110 ipproto 17 to 10.203.0.2/32 prohibit
+  ip -n server rule add priority 111 ipproto 17 to 10.203.0.3/32 prohibit
+  for peer_addr in 10.203.0.2 10.203.0.3; do
+    ip -n server route get "$peer_addr" ipproto 1 >/dev/null
+    ip -n server route get "$peer_addr" ipproto 17 sport 3478 >/dev/null
+    ip -n server route get "$peer_addr" ipproto 17 sport 5353 >/dev/null
+    if ip -n server route get "$peer_addr" ipproto 17 sport 49152 >/dev/null 2>&1; then
+      echo 'namespace relay: host candidate route remains available' >&2
+      exit 1
+    fi
+  done
   printf '%s\n' 'namespace-turn-password' >"$scenario_work/turn-pass"
   server_args=(--turn-server 10.203.0.1:3478 --turn-user fixture --turn-pass-file "$scenario_work/turn-pass")
   peer_args=(--turn turn:10.203.0.1:3478 --user fixture --pass-file "$scenario_work/turn-pass")
