@@ -35,6 +35,7 @@ import (
 	"github.com/Crank-Git/wingman/internal/peer"
 	"github.com/Crank-Git/wingman/internal/sig"
 	"github.com/Crank-Git/wingman/internal/turn"
+	"github.com/Crank-Git/wingman/internal/turnserver"
 )
 
 // defaultZone is the DNS zone peers query when none is supplied.
@@ -118,6 +119,10 @@ offer/answer flags:
 serve flags:
   --zone example.com      authoritative DNS zone this server serves
   --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
+  --turn-server ADDR      also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478)
+  --turn-user NAME        TURN username for the self-hosted server (enables relay candidates)
+  --turn-pass PASS        TURN password for the self-hosted server
+  --turn-external ADDR    public IP peers dial the server on (required when binding 0.0.0.0)
 `)
 }
 
@@ -128,6 +133,10 @@ func runServe(ctx context.Context, args []string) error {
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
 	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
+	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
+	turnUser := fs.String("turn-user", "", "TURN username for the self-hosted server (enables relay candidates)")
+	turnPass := fs.String("turn-pass", "", "TURN password for the self-hosted server")
+	turnExternal := fs.String("turn-external", "", "public IP peers dial the server on (required when binding a wildcard interface)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -137,6 +146,19 @@ func runServe(ctx context.Context, args []string) error {
 	}
 	defer srv.Stop()
 	fmt.Printf("wingman server listening on %s (zone %q)\n", srv.Addr(), *zone)
+
+	var turnSrv *turnserver.Server
+	if turnSrv, err = startTurnServer(os.Stdout, turnserver.Config{
+		Addr:         *turnAddr,
+		Username:     *turnUser,
+		Password:     *turnPass,
+		ExternalAddr: *turnExternal,
+	}); err != nil {
+		return err
+	}
+	if turnSrv != nil {
+		defer func() { _ = turnSrv.Close() }()
+	}
 
 	var metricsSrv *http.Server
 	if *metricsAddr != "" {
@@ -319,6 +341,27 @@ func startServe() (*dns.Server, error) {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
 	return srv, nil
+}
+
+// startTurnServer starts a self-hosted TURN/STUN server and prints the URIs
+// peers should use. It returns a nil server (with a nil error) when addr is
+// empty, so callers can treat "no TURN server" and "success" uniformly.
+func startTurnServer(out io.Writer, cfg turnserver.Config) (*turnserver.Server, error) {
+	if strings.TrimSpace(cfg.Addr) == "" {
+		return nil, nil
+	}
+	s, err := turnserver.New(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("turn-server: %w", err)
+	}
+	fmt.Fprintf(out, "turn-server listening on %s\n", s.Addr())
+	fmt.Fprintf(out, "  srflx: --turn %s\n", s.STUNURI())
+	if uri := s.TURNURI(); uri != "" {
+		fmt.Fprintf(out, "  relay: --turn %s --user %s --pass %s\n", uri, cfg.Username, cfg.Password)
+	} else {
+		fmt.Fprintln(out, "  relay: set --turn-user/--turn-pass to enable relay candidates")
+	}
+	return s, nil
 }
 
 // newTransport builds the DNS write-over-query transport pointed at srvAddr.
