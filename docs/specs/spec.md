@@ -317,6 +317,7 @@ Every milestone leaves tests green. The operator approves each promotion from de
 - No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 
 ## Changelog
+- 2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
 - 2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
 - 2026-11-04: The operator approves the spec and scaffold. Apply the reviewed files and retain the known defects as planned work.
 
@@ -389,3 +390,10 @@ GitHub issues cover the seven planned feature sets. The five built feature sets 
 - [#46](https://github.com/Crank-Git/wingman/issues/46) depends on [#40](https://github.com/Crank-Git/wingman/issues/40).
 
 Sub-issue bodies record dependencies within each epic. GitHub records each child as a native sub-issue.
+
+## Supplemental issues
+
+| Work | Tracking | Members |
+|---|---|---|
+| CI recovery | [#74](https://github.com/Crank-Git/wingman/issues/74) | [#69](https://github.com/Crank-Git/wingman/issues/69), [#73](https://github.com/Crank-Git/wingman/issues/73) |
+| Concurrent coverage profiles | [#16](https://github.com/Crank-Git/wingman/issues/16) | [#62](https://github.com/Crank-Git/wingman/issues/62) |
