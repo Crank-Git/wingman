@@ -1,7 +1,6 @@
 package dns
 
 import (
-	"context"
 	"strings"
 	"testing"
 
@@ -43,9 +42,6 @@ func TestDynUpdateConstructsAuthenticatedTCPResolver(t *testing.T) {
 	key.Name = "changed.example."
 	if d.TSIGKey.Name != "wingman.example." || tr.key.Name != d.TSIGKey.Name {
 		t.Fatal("caller mutation changes the retained key")
-	}
-	if _, err := tr.Poll(context.Background(), "room", sig.Answer); err == nil {
-		t.Fatal("Poll reports success before issue #43")
 	}
 }
 

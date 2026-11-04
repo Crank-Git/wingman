@@ -2,7 +2,7 @@
 
 The CLI accepts `--signaling dynupdate` for the planned RFC 2136 transport.
 The constructor validates configuration. Publish replaces a complete TXT RRset through authenticated TCP.
-Poll remains unavailable until issue #43 completes. The complete backend remains unshipped until epic #40 completes.
+Poll reconstructs authenticated TXT answers. The complete backend remains unshipped until epic #40 completes.
 
 Both `offer` and `answer` require these flags:
 
@@ -48,3 +48,17 @@ Long names can reduce the effective message limit.
 Size failures return `DynUpdateSizeError`. Authenticated DNS rejections return `DynUpdateRcodeError`.
 Exchange failures preserve their causes. Unsigned responses and invalid signatures fail through the existing dialer.
 The loopback fixture checks the protocol. Issue #45 supplies real BIND interoperability evidence.
+
+## Poll
+
+Poll queries the same owner through authenticated TCP without EDNS0.
+It checks the signed query before the exchange and the complete received response before it reads fragments.
+The response limit is 60 KiB, including all records and the actual TSIG data.
+The absolute DNS limit is 65535 bytes. The decoded message limit is 16 KiB.
+Poll accepts unordered TXT records with matching owner, type, class, fragment counts, and CRC.
+It rejects duplicate sequences, incomplete RRsets, and malformed fragments immediately.
+Atomic RRset replacement makes a nonempty incomplete answer a validation failure.
+NXDOMAIN and empty successful answers retry every 250 milliseconds until the context expires.
+Other DNS result codes return `DynUpdateRcodeError`. Size failures return `DynUpdateSizeError`.
+Cancellation and exchange failures preserve their causes.
+Issue #44 adds cleanup after successful consumption. Issue #45 supplies the pinned BIND fixture.

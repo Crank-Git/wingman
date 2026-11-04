@@ -1,19 +1,16 @@
 package dns
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/Crank-Git/wingman/internal/sig"
 )
 
 // DynUpdate holds the authenticated RFC 2136 transport configuration.
-// Set its fields before concurrent use. Poll requires issue #43.
+// Set its fields before concurrent use.
 type DynUpdate struct {
 	Resolver Resolver
 	Zone     string
@@ -45,9 +42,4 @@ func NewDynUpdate(addr, zone string, key *TSIGKey) (*DynUpdate, error) {
 	transport := &DynUpdate{Zone: zone, key: *key}
 	transport.Resolver = &Dialer{Addr: addr, Net: "tcp", Timeout: 5 * time.Second, TSIGKey: &transport.key}
 	return transport, nil
-}
-
-// Poll returns an error until issue #43 supplies TXT reconstruction.
-func (t *DynUpdate) Poll(context.Context, string, sig.Kind) ([]byte, error) {
-	return nil, errors.New("DynUpdate Poll requires issue #43")
 }
