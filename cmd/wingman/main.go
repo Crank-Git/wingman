@@ -119,6 +119,7 @@ offer/answer flags:
   --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
+  --pass-file PATH        restricted TURN password file (instead of --pass)
   --metrics               print connection metrics (Prometheus format) on exit
   --handshake-timeout D    positive handshake duration (default "30s")
 
@@ -135,6 +136,7 @@ serve flags:
   --turn-server ADDR      also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478)
   --turn-user NAME        TURN username for the self-hosted server (enables relay candidates)
   --turn-pass PASS        TURN password for the self-hosted server
+  --turn-pass-file PATH   restricted TURN password file (instead of --turn-pass)
   --turn-external ADDR    public IP peers dial the server on (required when binding 0.0.0.0)
 `)
 }
@@ -156,8 +158,13 @@ func runServe(ctx context.Context, args []string) (result error) {
 	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
 	turnUser := fs.String("turn-user", "", "TURN username for the self-hosted server (enables relay candidates)")
 	turnPass := fs.String("turn-pass", "", "TURN password for the self-hosted server")
+	turnPassFile := fs.String("turn-pass-file", "", "restricted TURN password file")
 	turnExternal := fs.String("turn-external", "", "public IP peers dial the server on (required when binding a wildcard interface)")
 	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	password, err := loadTURNPassword(*turnPass, *turnPassFile)
+	if err != nil {
 		return err
 	}
 	if *zone == "" {
@@ -182,7 +189,7 @@ func runServe(ctx context.Context, args []string) (result error) {
 		zone: *zone, listen: *listen, key: key,
 		https:       https.ServerConfig{ListenAddr: *httpsListen, CertFile: *tlsCert, KeyFile: *tlsKey, SecretFile: *secretFile, LocalDemo: *localDemo},
 		metricsAddr: *metricsAddr,
-		turn:        turnserver.Config{Addr: *turnAddr, Username: *turnUser, Password: *turnPass, ExternalAddr: *turnExternal},
+		turn:        turnserver.Config{Addr: *turnAddr, Username: *turnUser, Password: password, ExternalAddr: *turnExternal},
 	}, os.Stdout)
 }
 
@@ -223,9 +230,14 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
 	user := fs.String("user", "", "TURN username for --turn servers")
 	pass := fs.String("pass", "", "TURN password for --turn servers")
+	passFile := fs.String("pass-file", "", "restricted TURN password file")
 	metricsFlag := fs.Bool("metrics", false, "print connection metrics (Prometheus format) on exit")
 	handshakeTimeout := fs.Duration("handshake-timeout", defaultHandshakeTimeout, "positive handshake duration")
 	if err := fs.Parse(args); err != nil {
+		return peerOpts{}, err
+	}
+	password, err := loadTURNPassword(*pass, *passFile)
+	if err != nil {
 		return peerOpts{}, err
 	}
 	if *room == "" {
@@ -245,7 +257,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
 		signalingSecretFile: *signalingSecretFile,
 		allowLoopbackHTTP:   *allowLoopbackHTTP,
-		turn:                turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		turn:                turnServers, user: *user, pass: password, metrics: *metricsFlag,
 		handshakeTimeout: *handshakeTimeout,
 	}, nil
 }
@@ -423,9 +435,9 @@ func startTurnServer(out io.Writer, cfg turnserver.Config) (*turnserver.Server, 
 	fmt.Fprintf(out, "turn-server listening on %s\n", s.Addr())
 	fmt.Fprintf(out, "  srflx: --turn %s\n", s.STUNURI())
 	if uri := s.TURNURI(); uri != "" {
-		fmt.Fprintf(out, "  relay: --turn %s --user %s --pass %s\n", uri, cfg.Username, cfg.Password)
+		fmt.Fprintf(out, "  relay: --turn %s --user <USERNAME> --pass-file <PATH>\n", uri)
 	} else {
-		fmt.Fprintln(out, "  relay: set --turn-user/--turn-pass to enable relay candidates")
+		fmt.Fprintln(out, "  relay: set --turn-user and --turn-pass-file to enable relay candidates")
 	}
 	return s, nil
 }

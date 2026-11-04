@@ -171,7 +171,7 @@ func TestStartTurnServerSTUNOnly(t *testing.T) {
 }
 
 // TestStartTurnServerWithCreds confirms a server with credentials advertises a
-// TURN URI and prints the peer hint with the credentials.
+// TURN URI and prints the peer hint with placeholders.
 func TestStartTurnServerWithCreds(t *testing.T) {
 	var buf strings.Builder
 	s, err := startTurnServer(&buf, turnserver.Config{Addr: "127.0.0.1:0", Username: "alice", Password: "s3cret"})
@@ -185,8 +185,8 @@ func TestStartTurnServerWithCreds(t *testing.T) {
 	if !strings.Contains(buf.String(), s.TURNURI()) {
 		t.Errorf("output missing TURN URI %q:\n%s", s.TURNURI(), buf.String())
 	}
-	if !strings.Contains(buf.String(), "--user alice --pass s3cret") {
-		t.Errorf("relay hint missing credentials:\n%s", buf.String())
+	if !strings.Contains(buf.String(), "--user <USERNAME> --pass-file <PATH>") {
+		t.Errorf("relay hint missing placeholders:\n%s", buf.String())
 	}
 }
 
