@@ -19,6 +19,7 @@ func TestHandlerBoundsBody(t *testing.T) {
 		t.Run(strconv.Itoa(size), func(t *testing.T) {
 			h := NewHandler()
 			h.msgs["r/offer"] = entry{data: []byte("original"), at: time.Now()}
+			h.payloadBytes = len("original")
 			body := &countBody{Reader: strings.NewReader(strings.Repeat("x", size))}
 			req := httptest.NewRequest(http.MethodPost, route+"?room=r&kind=offer", body)
 			req.ContentLength = -1

@@ -33,14 +33,15 @@ const defaultPollInterval = 250 * time.Millisecond
 // secret is clearly scoped to wingman's signaling endpoint.
 const secretHeader = "X-Wingman-Secret"
 
-// defaultHandlerTTL bounds how long an unserved SDP message is retained before
-// it is swept. It bounds memory for rooms that never complete a handshake.
+// defaultHandlerTTL expires unserved messages on the next authorized access.
 const defaultHandlerTTL = 30 * time.Second
 
 // route is the single signaling endpoint both peers share.
 const route = "/signaling"
 
 const maxMessageBytes = 16 * 1024
+const maxHandlerEntries = 1024
+const maxHandlerPayloadBytes = 16 * 1024 * 1024
 
 // Transport is a sig.Transport that publishes and polls SDP over HTTPS. It is
 // safe for concurrent use.
@@ -256,12 +257,15 @@ type entry struct {
 // serves it over HTTPS. It is safe for concurrent use.
 //
 // POST accepts at most 16 KiB per message. Larger bodies return 413 without storage.
+// Capacity is 1024 entries and 16 MiB of payloads. Excess entries or bytes return 503.
 // GET consumes a stored message. Authorized access sweeps messages older than TTL.
 // Rooms are case-sensitive single labels of 1 to 63 bytes without dots,
 // backslash escapes, or surrounding whitespace. Underscores and edge hyphens are valid.
 type Handler struct {
-	mu   sync.Mutex
-	msgs map[string]entry
+	// mu guards msgs and payloadBytes so admission and replacement share one limit.
+	mu           sync.Mutex
+	msgs         map[string]entry
+	payloadBytes int
 	// TTL bounds how long an unserved message is retained. Zero means the
 	// default; entries older than TTL are swept on access.
 	TTL time.Duration
@@ -288,10 +292,29 @@ func (h *Handler) sweep(now time.Time) {
 	h.mu.Lock()
 	for k, e := range h.msgs {
 		if now.Sub(e.at) > h.TTL {
-			delete(h.msgs, k)
+			h.removeLocked(k)
 		}
 	}
 	h.mu.Unlock()
+}
+
+func (h *Handler) store(key string, body []byte) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	old, exists := h.msgs[key]
+	bytes := h.payloadBytes - len(old.data) + len(body)
+	if !exists && len(h.msgs) >= maxHandlerEntries || bytes > maxHandlerPayloadBytes {
+		return false
+	}
+	h.msgs[key] = entry{data: body, at: time.Now()}
+	h.payloadBytes = bytes
+	return true
+}
+
+// removeLocked requires mu so removal releases the same quota that admission uses.
+func (h *Handler) removeLocked(key string) {
+	h.payloadBytes -= len(h.msgs[key].data)
+	delete(h.msgs, key)
 }
 
 // ServeHTTP handles POST (store) and GET (retrieve) on the /signaling route.
@@ -321,7 +344,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "https: invalid kind", http.StatusBadRequest)
 		return
 	}
-	// Bound memory: drop any entries that have outlived the TTL.
 	h.sweep(time.Now())
 
 	key := room + "/" + kind
@@ -337,9 +359,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "https: read body", http.StatusBadRequest)
 			return
 		}
-		h.mu.Lock()
-		h.msgs[key] = entry{data: body, at: time.Now()}
-		h.mu.Unlock()
+		if !h.store(key, body) {
+			http.Error(w, "https: capacity exceeded", http.StatusServiceUnavailable)
+			return
+		}
 		w.WriteHeader(http.StatusOK)
 
 	case http.MethodGet:
@@ -356,7 +379,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// SDP is one-shot: remove it once served so a retried GET does not
 		// return a stale message.
 		h.mu.Lock()
-		delete(h.msgs, key)
+		h.removeLocked(key)
 		h.mu.Unlock()
 
 	default:
