@@ -8,7 +8,86 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/Crank-Git/wingman/internal/https"
 )
+
+type readinessOutput struct {
+	lines   chan string
+	release chan struct{}
+}
+
+func (o *readinessOutput) Write(p []byte) (int, error) {
+	line := string(p)
+	o.lines <- line
+	if strings.HasPrefix(line, "metrics listening on ") {
+		// Hold the lifecycle owner so cancellation cannot close the listeners yet.
+		<-o.release
+	}
+	return len(p), nil
+}
+
+func TestServeEndpointsObserveCancellationBeforeClosure(t *testing.T) {
+	cert, key, roots := cliCertificate(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	out := &readinessOutput{lines: make(chan string, 8), release: make(chan struct{})}
+	done := make(chan error, 1)
+	go func() {
+		done <- serveListeners(ctx, serveConfig{
+			listen: "127.0.0.1:0", zone: "example.com",
+			https:       https.ServerConfig{ListenAddr: "127.0.0.1:0", CertFile: cert, KeyFile: key, LocalDemo: true},
+			metricsAddr: "127.0.0.1:0",
+		}, out)
+	}()
+	defer func() {
+		cancel()
+		close(out.release)
+		if err := <-done; err != nil {
+			t.Error(err)
+		}
+	}()
+	var bases []string
+	for len(bases) < 2 {
+		select {
+		case line := <-out.lines:
+			if strings.HasPrefix(line, "HTTPS listening on ") {
+				bases = append(bases, strings.TrimSpace(strings.TrimPrefix(line, "HTTPS listening on ")))
+			}
+			if strings.HasPrefix(line, "metrics listening on ") {
+				address := strings.TrimSpace(strings.TrimPrefix(line, "metrics listening on "))
+				bases = append(bases, "http://"+strings.TrimSuffix(address, "/metrics"))
+			}
+		case <-ctx.Done():
+			t.Fatal("listener reports time out")
+		}
+	}
+	transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}}
+	defer transport.CloseIdleConnections()
+	client := &http.Client{Transport: transport, Timeout: time.Second}
+	check := func(path string, want int) {
+		t.Helper()
+		for _, base := range bases {
+			if strings.HasSuffix(base, ":0") {
+				t.Fatalf("unbound address: %s", base)
+			}
+			response, err := client.Get(base + path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != want {
+				t.Fatalf("%s%s: got %d, want %d", base, path, response.StatusCode, want)
+			}
+		}
+	}
+	check("/healthz", 200)
+	check("/readyz", 200)
+	cancel()
+	check("/healthz", 200)
+	check("/readyz", 503)
+}
 
 func TestServeReturnsMetricsBindFailure(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
