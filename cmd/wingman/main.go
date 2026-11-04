@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -306,6 +307,17 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 	if _, err := sess.Start(ctx); err != nil {
 		m.ConnectionFailed()
 		m.Failure()
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			cause := ctx.Err()
+			// Socket deadlines can expire before the context timer callback runs.
+			if deadline, ok := ctx.Deadline(); cause == nil && ok && !time.Now().Before(deadline) {
+				cause = context.DeadlineExceeded
+			}
+			if cause != nil {
+				err = errors.Join(err, cause)
+			}
+		}
 		return nil, err
 	}
 	m.ConnectionSucceeded()
