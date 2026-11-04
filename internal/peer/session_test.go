@@ -209,6 +209,12 @@ func TestSessionEndToEndDNS(t *testing.T) {
 
 	runHandshake(t, ctx, offerer, answerer)
 
+	for _, s := range []*Session{offerer, answerer} {
+		if _, err := s.Start(ctx); err == nil || !strings.Contains(err.Error(), "already started") {
+			t.Fatalf("repeat Start error = %v, want already started", err)
+		}
+	}
+
 	offerDC, ok := offerer.DataChannel()
 	if !ok {
 		t.Fatal("offerer has no data channel")
