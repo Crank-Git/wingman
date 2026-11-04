@@ -133,6 +133,22 @@ The option accepts a positive Go duration, such as `500ms`, `30s`, or `1m30s`.
 If the deadline expires, the command closes the Session and reports the cause.
 After the handshake succeeds, chat continues until normal exit.
 
+### Doctor
+
+Run `wingman doctor --addr 127.0.0.1:PORT` to check a custom DNS endpoint over UDP and TCP.
+Use the peer transport flags to select `https` or `dynupdate` and its credentials.
+DynUpdate requires an explicit `--zone` and a restricted `--dns-tsig-key-file`.
+HTTPS requires `--signaling-url` and supports `--signaling-secret-file`.
+
+Doctor mutates only a random disposable probe room. It does not accept `--room`.
+The probe deadline defaults to five seconds. Use a positive `--timeout`, such as `--timeout 2s`, to change it.
+DynUpdate cleanup permits at most one additional second, including after a lost publication acknowledgement.
+If cleanup fails, use the generated room and original configuration with `wingman cleanup`.
+HTTPS retrieval consumes the probe. Custom DNS probe data expires through the server's existing store policy.
+
+Each applicable stage reports its result and duration. A failed stage makes the command exit nonzero.
+Doctor checks the selected signaling endpoint. It does not check STUN, TURN, or every NAT topology.
+
 ### TURN / STUN (NAT traversal)
 
 After connection, each peer prints the selected local and remote candidate types:
