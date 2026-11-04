@@ -39,7 +39,7 @@ func TestBINDDoctorConsumesProbe(t *testing.T) {
 		}
 	}
 	command := exec.Command(os.Getenv("WINGMAN_BIND_CLI"), "doctor", "--signaling", "dynupdate", "--addr", opts.addr, "--zone", opts.zone, "--dns-tsig-key-file", opts.dnsTSIGKeyFile)
-	if output, err := command.CombinedOutput(); err != nil || !strings.Contains(string(output), "retrieval success=true") {
+	if output, err := command.CombinedOutput(); err != nil || !strings.Contains(string(output), "retrieval: PASS") {
 		t.Fatalf("doctor CLI: %s %v", output, err)
 	}
 }
@@ -55,7 +55,7 @@ func TestBINDDoctorRejectsAuthentication(t *testing.T) {
 	}
 	command := exec.Command(os.Getenv("WINGMAN_BIND_CLI"), "doctor", "--signaling", "dynupdate", "--addr", os.Getenv("WINGMAN_BIND_ADDR"), "--zone", "example.test", "--dns-tsig-key-file", path, "--timeout", "1s")
 	output, err := command.CombinedOutput()
-	if err == nil || !strings.Contains(string(output), "auth success=false") || strings.Contains(string(output), "d3Jvbmc=") {
+	if err == nil || !strings.Contains(string(output), "auth: FAIL") || strings.Contains(string(output), "d3Jvbmc=") {
 		t.Fatalf("authentication: %s %v", output, err)
 	}
 }
