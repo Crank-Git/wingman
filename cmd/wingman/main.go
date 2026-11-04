@@ -319,7 +319,9 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		err = closePeerSession(sess.Close, err)
 	}()
 	pair, available := sess.SelectedCandidatePair()
-	printSelectedPair(out, pair, available)
+	if err := printSelectedPair(out, pair, available); err != nil {
+		return err
+	}
 	err = chat(ctx, sess, role, in, out)
 	if opts.metrics {
 		fmt.Fprint(out, m.Text())
@@ -327,12 +329,17 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 	return err
 }
 
-func printSelectedPair(out io.Writer, pair peer.CandidatePairTypes, available bool) {
+func printSelectedPair(out io.Writer, pair peer.CandidatePairTypes, available bool) error {
+	var err error
 	if !available {
-		fmt.Fprintln(out, "selected pair: unavailable")
-		return
+		_, err = fmt.Fprintln(out, "selected pair: unavailable")
+	} else {
+		_, err = fmt.Fprintf(out, "selected pair: local=%s remote=%s\n", pair.Local, pair.Remote)
 	}
-	fmt.Fprintf(out, "selected pair: local=%s remote=%s\n", pair.Local, pair.Remote)
+	if err != nil {
+		return fmt.Errorf("write selected pair: %w", err)
+	}
+	return nil
 }
 
 func closePeerSession(closeSession func() error, result error) error {
