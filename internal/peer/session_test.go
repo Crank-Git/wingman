@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/pion/webrtc/v4"
+
 	"github.com/Crank-Git/wingman/internal/dns"
 	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
@@ -363,7 +365,7 @@ func TestRunAnswererPollError(t *testing.T) {
 // error while Poll is delegated unchanged, exercising the caller's transport
 // error path without any DNS.
 type failPublishTransport struct {
-	base sig.Transport
+	base   sig.Transport
 	pubErr error
 }
 
@@ -492,5 +494,241 @@ func TestSessionRecordsGatheredCandidates(t *testing.T) {
 	cands := m.Candidates()
 	if cands["host"] == 0 {
 		t.Fatalf("host candidates not recorded during run: %v", cands)
+	}
+}
+
+// overridePC wraps a real *webrtc.PeerConnection and fails one or more methods
+// with a configured error so the handshake's failure branches can be exercised
+// deterministically. Untuned methods delegate to the real peer connection.
+type overridePC struct {
+	*webrtc.PeerConnection
+	createDataChannelErr error
+	createOfferErr       error
+	createAnswerErr      error
+	setLocalErr          error
+}
+
+func (f *overridePC) CreateDataChannel(label string, opts *webrtc.DataChannelInit) (*webrtc.DataChannel, error) {
+	if f.createDataChannelErr != nil {
+		return nil, f.createDataChannelErr
+	}
+	return f.PeerConnection.CreateDataChannel(label, opts)
+}
+
+func (f *overridePC) CreateOffer(opts *webrtc.OfferOptions) (webrtc.SessionDescription, error) {
+	if f.createOfferErr != nil {
+		return webrtc.SessionDescription{}, f.createOfferErr
+	}
+	return f.PeerConnection.CreateOffer(opts)
+}
+
+func (f *overridePC) CreateAnswer(opts *webrtc.AnswerOptions) (webrtc.SessionDescription, error) {
+	if f.createAnswerErr != nil {
+		return webrtc.SessionDescription{}, f.createAnswerErr
+	}
+	return f.PeerConnection.CreateAnswer(opts)
+}
+
+func (f *overridePC) SetLocalDescription(desc webrtc.SessionDescription) error {
+	if f.setLocalErr != nil {
+		return f.setLocalErr
+	}
+	return f.PeerConnection.SetLocalDescription(desc)
+}
+
+// injectFailingPC installs a peer-connection factory that returns a real peer
+// connection wrapped so that the named method fails with boom. It returns a
+// restore function that callers must defer.
+func injectFailingPC(t *testing.T, failOn string, boom error) func() {
+	t.Helper()
+	cfg := Config{Room: "inject", Zone: "example.com"}
+	realPC, err := webrtc.NewPeerConnection(configuration(cfg))
+	if err != nil {
+		t.Fatalf("new pc for injection: %v", err)
+	}
+	overlay := &overridePC{PeerConnection: realPC}
+	switch failOn {
+	case "CreateDataChannel":
+		overlay.createDataChannelErr = boom
+	case "CreateOffer":
+		overlay.createOfferErr = boom
+	case "SetLocalDescription":
+		overlay.setLocalErr = boom
+	case "CreateAnswer":
+		overlay.createAnswerErr = boom
+	default:
+		t.Fatalf("unknown failOn %q", failOn)
+	}
+	saved := newPeerConnection
+	newPeerConnection = func(webrtc.Configuration) (peerConn, error) {
+		return overlay, nil
+	}
+	return func() { newPeerConnection = saved }
+}
+
+// makeValidOffer builds a complete offer SDP envelope by driving a real peer
+// connection, so it can be handed to an answerer via a fixed transport.
+func makeValidOffer(t *testing.T) []byte {
+	t.Helper()
+	pc, err := webrtc.NewPeerConnection(configuration(Config{Room: "offer", Zone: "example.com"}))
+	if err != nil {
+		t.Fatalf("new pc: %v", err)
+	}
+	defer pc.Close()
+	if _, err := pc.CreateDataChannel(defaultLabel, nil); err != nil {
+		t.Fatalf("create data channel: %v", err)
+	}
+	offer, err := pc.CreateOffer(nil)
+	if err != nil {
+		t.Fatalf("create offer: %v", err)
+	}
+	if err := pc.SetLocalDescription(offer); err != nil {
+		t.Fatalf("set local description: %v", err)
+	}
+	deadline := time.After(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if pc.ICEGatheringState() == webrtc.ICEGatheringStateComplete {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatal("ICE gathering timed out")
+		case <-ticker.C:
+		}
+	}
+	full, err := encodeSDP(*pc.LocalDescription())
+	if err != nil {
+		t.Fatalf("encode offer: %v", err)
+	}
+	return full
+}
+
+// fixedOfferTransport returns a prepared offer on every Poll.
+type fixedOfferTransport struct {
+	offer []byte
+}
+
+func (t fixedOfferTransport) Publish(context.Context, string, sig.Kind, []byte) error { return nil }
+func (t fixedOfferTransport) Poll(_ context.Context, _ string, _ sig.Kind) ([]byte, error) {
+	return t.offer, nil
+}
+
+// TestRunOffererCreateDataChannelError verifies that a failure creating the
+// offerer's data channel is surfaced instead of being swallowed.
+func TestRunOffererCreateDataChannelError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	restore := injectFailingPC(t, "CreateDataChannel", errors.New("create dc boom"))
+	defer restore()
+
+	offerer := NewSession(RoleOfferer, Config{Room: "dc", Zone: "example.com", Transport: sig.NewStubTransport()})
+	_, err := offerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected create data channel error")
+	}
+}
+
+// TestRunOffererCreateOfferError verifies that a failure creating the offer is
+// surfaced by the offerer rather than being swallowed.
+func TestRunOffererCreateOfferError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	restore := injectFailingPC(t, "CreateOffer", errors.New("create offer boom"))
+	defer restore()
+
+	offerer := NewSession(RoleOfferer, Config{Room: "offer", Zone: "example.com", Transport: sig.NewStubTransport()})
+	_, err := offerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected create offer error")
+	}
+}
+
+// TestRunOffererSetLocalDescriptionError verifies that a failure setting the
+// local offer is surfaced by the offerer.
+func TestRunOffererSetLocalDescriptionError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	restore := injectFailingPC(t, "SetLocalDescription", errors.New("set local boom"))
+	defer restore()
+
+	offerer := NewSession(RoleOfferer, Config{Room: "local", Zone: "example.com", Transport: sig.NewStubTransport()})
+	_, err := offerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected set local description error")
+	}
+}
+
+// TestRunOffererPublishError verifies that an offerer surfaces a transport
+// error from publishing its offer instead of blocking or swallowing it.
+func TestRunOffererPublishError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	offerer := NewSession(RoleOfferer, Config{
+		Room: "pub-offer", Zone: "example.com",
+		Transport: failPublishTransport{base: sig.NewStubTransport(), pubErr: errors.New("publish offer boom")},
+	})
+	_, err := offerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected publish offer error")
+	}
+}
+
+// TestStartNewPeerConnectionError verifies that an invalid ICE configuration
+// (a TURN server without credentials) is surfaced by NewPeerConnection rather
+// than being swallowed.
+func TestStartNewPeerConnectionError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	offerer := NewSession(RoleOfferer, Config{
+		Room: "bad-ice", Zone: "example.com",
+		ICEServers: []webrtc.ICEServer{{
+			URLs:           []string{"turn:example.com:3478"},
+			CredentialType: webrtc.ICECredentialTypePassword,
+		}},
+	})
+	_, err := offerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected NewPeerConnection error for invalid ICE config")
+	}
+}
+
+// TestRunAnswererCreateAnswerError verifies that a failure creating the answer
+// is surfaced by the answerer rather than being swallowed.
+func TestRunAnswererCreateAnswerError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	offer := makeValidOffer(t)
+	restore := injectFailingPC(t, "CreateAnswer", errors.New("create answer boom"))
+	defer restore()
+
+	answerer := NewSession(RoleAnswerer, Config{Room: "cand", Zone: "example.com", Transport: fixedOfferTransport{offer: offer}})
+	_, err := answerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected create answer error")
+	}
+}
+
+// TestRunAnswererSetLocalDescriptionError verifies that a failure setting the
+// local answer is surfaced by the answerer.
+func TestRunAnswererSetLocalDescriptionError(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
+	defer cancel()
+
+	offer := makeValidOffer(t)
+	restore := injectFailingPC(t, "SetLocalDescription", errors.New("set local answer boom"))
+	defer restore()
+
+	answerer := NewSession(RoleAnswerer, Config{Room: "local-ans", Zone: "example.com", Transport: fixedOfferTransport{offer: offer}})
+	_, err := answerer.Start(ctx)
+	if err == nil {
+		t.Fatal("expected set local description error for answer")
 	}
 }
