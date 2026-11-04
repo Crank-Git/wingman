@@ -60,6 +60,11 @@ func New(cfg Config) (*Server, error) {
 	if (cfg.Username == "") != (cfg.Password == "") {
 		return nil, fmt.Errorf("turnserver: --turn-user and --turn-pass must be set together")
 	}
+	// Validate ExternalAddr before binding so an invalid value fails fast
+	// without touching a socket.
+	if ext := strings.TrimSpace(cfg.ExternalAddr); ext != "" && net.ParseIP(ext) == nil {
+		return nil, fmt.Errorf("turnserver: --turn-external %q is not an IP address", ext)
+	}
 
 	udp, err := net.ListenPacket("udp4", cfg.Addr)
 	if err != nil {
@@ -119,11 +124,9 @@ func New(cfg Config) (*Server, error) {
 // when set, otherwise the concrete listen host. A wildcard listen host without
 // an explicit external address is rejected: advertising 0.0.0.0 is useless.
 func advertisedHost(cfg Config, boundHost string) (string, error) {
-	ext := strings.TrimSpace(cfg.ExternalAddr)
-	if ext != "" {
-		if net.ParseIP(ext) == nil {
-			return "", fmt.Errorf("turnserver: --turn-external %q is not an IP address", ext)
-		}
+	// ExternalAddr is validated in New before the socket is bound, so a
+	// non-empty value here is already a well-formed IP.
+	if ext := strings.TrimSpace(cfg.ExternalAddr); ext != "" {
 		return ext, nil
 	}
 	if net.ParseIP(boundHost) == nil || net.ParseIP(boundHost).IsUnspecified() {
@@ -136,12 +139,11 @@ func advertisedHost(cfg Config, boundHost string) (string, error) {
 // differ from Config.Addr when the caller asked for port 0.
 func (s *Server) Addr() string { return s.boundAddr }
 
-// port returns the bound port as a string.
+// port returns the bound port as a string. boundAddr is always a valid
+// "host:port" (set from the bound socket's LocalAddr), so SplitHostPort
+// cannot fail here.
 func (s *Server) port() string {
-	_, port, err := net.SplitHostPort(s.boundAddr)
-	if err != nil {
-		return ""
-	}
+	_, port, _ := net.SplitHostPort(s.boundAddr)
 	return port
 }
 
