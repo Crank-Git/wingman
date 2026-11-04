@@ -497,27 +497,50 @@ func TestChatSendTextError(t *testing.T) {
 	defer srv.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	var workers sync.WaitGroup
+	defer func() {
+		// Cancellation releases setup and chat before cleanup waits for them.
+		cancel()
+		workers.Wait()
+	}()
 
 	room := "chat-senderr-room"
+	answerDone := make(chan error, 1)
+	workers.Add(1)
 	go func() {
-		if _, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectAnswer: %v", err)
-		}
+		defer workers.Done()
+		_, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman")
+		answerDone <- err
 	}()
 
 	offer, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman")
 	if err != nil {
 		t.Fatalf("connectOffer: %v", err)
 	}
-	// Close the data channel so the next SendText fails.
-	if dc, ok := offer.DataChannel(); ok {
-		_ = dc.Close()
+	// Both peers must finish setup before channel closure can test SendText.
+	select {
+	case err := <-answerDone:
+		if err != nil {
+			t.Fatalf("connectAnswer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connectAnswer did not return")
+	}
+	dc, ok := offer.DataChannel()
+	if !ok {
+		t.Fatal("offer has no data channel")
+	}
+	if err := dc.Close(); err != nil {
+		t.Fatalf("close data channel: %v", err)
 	}
 
 	out := &bytes.Buffer{}
 	errCh := make(chan error, 1)
-	go func() { errCh <- chat(ctx, offer, peer.RoleOfferer, strings.NewReader("hello\n"), out) }()
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		errCh <- chat(ctx, offer, peer.RoleOfferer, strings.NewReader("hello\n"), out)
+	}()
 
 	select {
 	case err := <-errCh:
