@@ -32,6 +32,7 @@ The command checks these stages:
 - Required tools and a writable cache.
 - Go format and cyclomatic complexity, including tests.
 - Quality checker, coverage checker, and verification command regressions.
+- Demo lifecycle checks and a real CLI exchange with credential and SDP log checks.
 - `go vet` and aggregate statement coverage of at least 95%.
 - The race detector on all packages.
 - The CLI build.

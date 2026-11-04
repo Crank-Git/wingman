@@ -5,6 +5,31 @@ This guide uses one server and two peers. The peers can share a host or run on s
 
 ## Build and local demo
 
+For an automatic two-peer exchange from a fresh clone, install Go 1.25.0 and Python 3.
+Run this command from the repository root:
+
+```sh
+bash scripts/demo.sh
+```
+
+The script builds a temporary CLI binary and starts an authenticated DNS server on an ephemeral loopback port.
+Two CLI peers exchange `demo message from offer` and `demo message from answer` in a random room.
+The script prints the server and peer logs, including both receipts and the selected pair types.
+Default logs omit credentials and raw SDP.
+The demo uses local host candidates. It requires no Docker daemon or public service.
+
+The script creates a random TSIG secret in a temporary JSON file with mode `0600`.
+The temporary directory has mode `0700`.
+Success, failure, Ctrl-C, and SIGTERM all remove the temporary directory and stop the child processes.
+The exchange has a 30-second deadline. Each build has the same deadline.
+Cleanup sends SIGTERM and waits at most two seconds before it sends SIGKILL.
+An uncatchable signal, such as SIGKILL, prevents process cleanup.
+
+Use `--timeout 60` to change the deadline.
+Use `--binary /path/to/wingman` to use an existing CLI binary.
+The demo uses credential-file flags. Existing direct credential flags remain available.
+
+For an interactive local exchange, follow these steps.
 Install Go 1.25.0. Run from the repository root:
 
 ```sh

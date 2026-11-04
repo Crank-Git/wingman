@@ -7,7 +7,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parent.parent
-STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests", "namespace-tests", "dynupdate-fixture-tests",
+STAGES = ["format", "complexity", "quality-tests", "coverage-tests", "verify-tests", "namespace-tests", "dynupdate-fixture-tests", "demo-tests",
           "vet", "coverage", "race", "build"]
 
 
@@ -54,7 +54,8 @@ if [[ "${FAIL_STAGE:-}" == "$stage" ]]; then exit 7; fi
         for name, stage in [("test_quality.py", "quality-tests"),
                             ("test_verify.py", "verify-tests"),
                             ("test_namespace.py", "namespace-tests"),
-                            ("test_dynupdate.py", "dynupdate-fixture-tests")]:
+                            ("test_dynupdate.py", "dynupdate-fixture-tests"),
+                            ("test_demo.py", "demo-tests")]:
             (scripts / name).write_text(
                 'import os, unittest\n'
                 'class Fixture(unittest.TestCase):\n'
