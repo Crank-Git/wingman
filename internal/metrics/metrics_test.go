@@ -1,6 +1,9 @@
 package metrics
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"strings"
 	"sync"
@@ -175,5 +178,61 @@ func TestTextFormatIsValid(t *testing.T) {
 		if _, err := strconv.ParseFloat(fields[1], 64); err != nil {
 			t.Errorf("metric value %q not numeric: %v", fields[1], err)
 		}
+	}
+}
+
+// TestMetricsHandlerSweep verifies the /metrics scrape endpoint renders the
+// Prometheus text format, sets the correct content type, rejects non-GET, and
+// 404s off-path.
+func TestMetricsHandlerSweep(t *testing.T) {
+	m := New()
+	m.ConnectionAttempted()
+	m.ConnectionSucceeded()
+	m.RecordCandidate("host")
+
+	srv := httptest.NewServer(m.MetricsHandler())
+	defer srv.Close()
+
+	// GET /metrics: 200, correct content type, expected lines present.
+	resp, err := http.Get(srv.URL + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /metrics status = %d, want 200", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != PrometheusContentType {
+		t.Errorf("Content-Type = %q, want %q", ct, PrometheusContentType)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	for _, want := range []string{
+		"# TYPE wingman_connections_attempted counter",
+		"wingman_connections_attempted 1",
+		"wingman_candidates_host 1",
+	} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("metrics body missing %q\n%s", want, body)
+		}
+	}
+
+	// POST /metrics: 405.
+	postResp, err := http.Post(srv.URL+"/metrics", "text/plain", nil)
+	if err != nil {
+		t.Fatalf("POST /metrics: %v", err)
+	}
+	postResp.Body.Close()
+	if postResp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("POST /metrics status = %d, want 405", postResp.StatusCode)
+	}
+
+	// Off-path: 404.
+	other, err := http.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	other.Body.Close()
+	if other.StatusCode != http.StatusNotFound {
+		t.Errorf("GET / status = %d, want 404", other.StatusCode)
 	}
 }
