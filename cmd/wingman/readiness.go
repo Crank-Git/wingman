@@ -53,8 +53,10 @@ func (s *readiness) handler(next http.Handler) http.Handler {
 
 func serveListeners(ctx context.Context, cfg serveConfig, out io.Writer) (result error) {
 	state := &readiness{ctx: ctx}
+	collector := metrics.New()
 	// DNS owns an internal cancellation loop. Keep shutdown under this owner.
 	srv := dns.NewServer()
+	srv.Metrics = collector
 	srv.ListenAddr, srv.Zone, srv.TSIGKey = cfg.listen, cfg.zone, cfg.key
 	if err := srv.Start(context.Background()); err != nil {
 		return err
@@ -93,7 +95,7 @@ func serveListeners(ctx context.Context, cfg serveConfig, out io.Writer) (result
 		defer func() { result = drainHTTP(tlsServer, tlsResult, result) }()
 	}
 	if metricsListener != nil {
-		server := &http.Server{Handler: state.handler(metrics.New().MetricsHandler()), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
+		server := &http.Server{Handler: state.handler(collector.MetricsHandler()), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second}
 		go func() { metricsResult <- server.Serve(metricsListener) }()
 		defer func() { result = drainHTTP(server, metricsResult, result) }()
 	}

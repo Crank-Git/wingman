@@ -14,6 +14,7 @@ import (
 
 	"github.com/miekg/dns"
 
+	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
 
@@ -22,10 +23,11 @@ import (
 // are stored; poll queries (the room poll name) return the stored fragments as
 // TXT records. It is safe for concurrent use.
 type Server struct {
-	ListenAddr    string     // Set before Start. Empty selects 127.0.0.1:0.
-	Zone          string     // Set before Start or requests. Empty accepts all zones for library callers.
-	TSIGKey       *TSIGKey   // Set before Start or requests.
-	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
+	Metrics       *metrics.Metrics // Set before Start or requests. Nil disables DNS metrics.
+	ListenAddr    string           // Set before Start. Empty selects 127.0.0.1:0.
+	Zone          string           // Set before Start or requests. Empty accepts all zones for library callers.
+	TSIGKey       *TSIGKey         // Set before Start or requests.
+	mu            sync.Mutex       // mu guards entries, fragments, and byte counts.
 	frags         map[storageKey]*fragmentEntry
 	retainedBytes int
 	limits        storageLimits // Set limits before Start or requests.
@@ -192,6 +194,7 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 	if entry := s.frags[key]; entry != nil && !now.Before(entry.createdAt.Add(fragmentLifetime)) {
 		s.retainedBytes -= entry.bytes
 		delete(s.frags, key)
+		s.updateRetainedMetrics()
 	}
 }
 
@@ -201,6 +204,11 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 // truncation, since TCP has no size limit).
 func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
+		if s.Metrics != nil {
+			observed := &metricsWriter{ResponseWriter: w, code: dns.RcodeServerFailure}
+			w = observed
+			defer func() { s.recordQuery(req, observed.code) }()
+		}
 		responseSize := truncateSize
 		if s.TSIGKey != nil {
 			t := req.IsTsig()
@@ -286,6 +294,7 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 		entry.bytes += len(payload)
 		s.retainedBytes += len(payload)
 		entry.fragments[parsed.Seq] = frag
+		s.updateRetainedMetrics()
 	}
 	s.mu.Unlock()
 
