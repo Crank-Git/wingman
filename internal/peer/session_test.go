@@ -3,6 +3,7 @@ package peer
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -615,6 +616,19 @@ func (t fixedOfferTransport) Poll(_ context.Context, _ string, _ sig.Kind) ([]by
 	return t.offer, nil
 }
 
+// assertErrorContains checks that err is non-nil and wraps the expected
+// failing operation, so a regression that swallows the real error and falls
+// through to a later non-nil error still fails the test.
+func assertErrorContains(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("expected error containing %q, got nil", want)
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected error containing %q, got %v", want, err)
+	}
+}
+
 // TestRunOffererCreateDataChannelError verifies that a failure creating the
 // offerer's data channel is surfaced instead of being swallowed.
 func TestRunOffererCreateDataChannelError(t *testing.T) {
@@ -626,9 +640,7 @@ func TestRunOffererCreateDataChannelError(t *testing.T) {
 
 	offerer := NewSession(RoleOfferer, Config{Room: "dc", Zone: "example.com", Transport: sig.NewStubTransport()})
 	_, err := offerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected create data channel error")
-	}
+	assertErrorContains(t, err, "create data channel")
 }
 
 // TestRunOffererCreateOfferError verifies that a failure creating the offer is
@@ -642,9 +654,7 @@ func TestRunOffererCreateOfferError(t *testing.T) {
 
 	offerer := NewSession(RoleOfferer, Config{Room: "offer", Zone: "example.com", Transport: sig.NewStubTransport()})
 	_, err := offerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected create offer error")
-	}
+	assertErrorContains(t, err, "create offer")
 }
 
 // TestRunOffererSetLocalDescriptionError verifies that a failure setting the
@@ -658,9 +668,7 @@ func TestRunOffererSetLocalDescriptionError(t *testing.T) {
 
 	offerer := NewSession(RoleOfferer, Config{Room: "local", Zone: "example.com", Transport: sig.NewStubTransport()})
 	_, err := offerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected set local description error")
-	}
+	assertErrorContains(t, err, "set local description")
 }
 
 // TestRunOffererPublishError verifies that an offerer surfaces a transport
@@ -674,9 +682,7 @@ func TestRunOffererPublishError(t *testing.T) {
 		Transport: failPublishTransport{base: sig.NewStubTransport(), pubErr: errors.New("publish offer boom")},
 	})
 	_, err := offerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected publish offer error")
-	}
+	assertErrorContains(t, err, "publish offer")
 }
 
 // TestStartNewPeerConnectionError verifies that an invalid ICE configuration
@@ -694,9 +700,7 @@ func TestStartNewPeerConnectionError(t *testing.T) {
 		}},
 	})
 	_, err := offerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected NewPeerConnection error for invalid ICE config")
-	}
+	assertErrorContains(t, err, "new peer connection")
 }
 
 // TestRunAnswererCreateAnswerError verifies that a failure creating the answer
@@ -711,9 +715,7 @@ func TestRunAnswererCreateAnswerError(t *testing.T) {
 
 	answerer := NewSession(RoleAnswerer, Config{Room: "cand", Zone: "example.com", Transport: fixedOfferTransport{offer: offer}})
 	_, err := answerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected create answer error")
-	}
+	assertErrorContains(t, err, "create answer")
 }
 
 // TestRunAnswererSetLocalDescriptionError verifies that a failure setting the
@@ -728,7 +730,5 @@ func TestRunAnswererSetLocalDescriptionError(t *testing.T) {
 
 	answerer := NewSession(RoleAnswerer, Config{Room: "local-ans", Zone: "example.com", Transport: fixedOfferTransport{offer: offer}})
 	_, err := answerer.Start(ctx)
-	if err == nil {
-		t.Fatal("expected set local description error for answer")
-	}
+	assertErrorContains(t, err, "set local description")
 }

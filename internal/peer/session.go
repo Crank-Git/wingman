@@ -92,15 +92,15 @@ type MessageHandler func(data []byte)
 // Session drives a single offer/answer/ICE handshake and owns the resulting
 // data channel. It is not safe for concurrent use beyond the documented API.
 type Session struct {
-	cfg    Config
-	role   Role
-	label  string
+	cfg   Config
+	role  Role
+	label string
 
-	mu       sync.Mutex
-	pc       peerConn
-	dataChan *webrtc.DataChannel
+	mu        sync.Mutex
+	pc        peerConn
+	dataChan  *webrtc.DataChannel
 	onMessage MessageHandler
-	met      *metrics.Metrics
+	met       *metrics.Metrics
 
 	openCh chan struct{}
 }
@@ -176,10 +176,13 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 			done <- err
 		}
 	}
-	// fail records an error and tears the connection down.
+	// fail records an error and tears the connection down. Signal first: closing
+	// the peer connection fires OnConnectionStateChange(Closed), which would
+	// otherwise race this signal and win the buffered channel, masking the real
+	// handshake error with "connection closed".
 	fail := func(err error) {
-		_ = pc.Close()
 		signal(err)
+		_ = pc.Close()
 	}
 
 	pc.OnConnectionStateChange(func(state webrtc.PeerConnectionState) {
