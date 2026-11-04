@@ -249,7 +249,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 // runPeer builds the signaling transport and ICE servers from opts, connects a
 // session for the given role (recording metrics), and runs the send/receive
 // loop. It prints the metrics snapshot when opts.metrics is set.
-func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) error {
+func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) (err error) {
 	transport, err := buildTransport(opts)
 	if err != nil {
 		return err
@@ -276,14 +276,24 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		return err
 	}
 	defer func() {
-		// Preserve the chat result if cleanup also fails.
-		_ = sess.Close()
+		err = closePeerSession(sess.Close, err)
 	}()
 	err = chat(ctx, sess, role, in, out)
 	if opts.metrics {
 		fmt.Fprint(out, m.Text())
 	}
 	return err
+}
+
+func closePeerSession(closeSession func() error, result error) error {
+	closeErr := closeSession()
+	if result != nil {
+		return result
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close session: %w", closeErr)
+	}
+	return nil
 }
 
 // startSession creates a session for role with cfg, runs the handshake, and
