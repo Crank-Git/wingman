@@ -12,7 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GOTOOLCHAIN: local
-      GOCACHE: ${{ runner.temp }}/wingman-go-cache
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,4 +30,6 @@ jobs:
         run: go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
 
       - name: Verify
+        env:
+          GOCACHE: ${{ runner.temp }}/wingman-go-cache
         run: bash scripts/verify.sh
