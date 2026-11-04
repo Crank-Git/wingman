@@ -37,11 +37,12 @@ func TestDynUpdateConstructsAuthenticatedTCPResolver(t *testing.T) {
 	}
 	var _ sig.Transport = tr
 	d := tr.Resolver.(*Dialer)
-	if tr.Zone != "example.com" || d.Net != "tcp" || d.Addr != "[::1]:5353" || d.Timeout <= 0 || d.TSIGKey != key {
+	if tr.Zone != "example.com" || d.Net != "tcp" || d.Addr != "[::1]:5353" || d.Timeout <= 0 || *d.TSIGKey != *key {
 		t.Fatalf("invalid transport configuration: zone=%q network=%q", tr.Zone, d.Net)
 	}
-	if err := tr.Publish(context.Background(), "room", sig.Offer, nil); err == nil {
-		t.Fatal("Publish reports success before issue #42")
+	key.Name = "changed.example."
+	if d.TSIGKey.Name != "wingman.example." || tr.key.Name != d.TSIGKey.Name {
+		t.Fatal("caller mutation changes the retained key")
 	}
 	if _, err := tr.Poll(context.Background(), "room", sig.Answer); err == nil {
 		t.Fatal("Poll reports success before issue #43")
