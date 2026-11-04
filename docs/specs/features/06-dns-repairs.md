@@ -2,8 +2,8 @@
 id: dns-repairs
 feature: DNS isolation and resource limits
 epic: Epic 1: DNS repairs
-status: issued
-issues: [16, 17, 18, 19, 20, 21]
+status: built
+issues: [16, 17, 18, 19, 20, 21, 62]
 mockups: [mockups/06-dns-repairs.html]
 ---
 
@@ -71,12 +71,12 @@ After expiry, a new message may reuse the room. Concurrent publications cannot c
 Authentication remains a separate server requirement. CRC alone provides no authorization.
 
 ## Acceptance criteria
-- [ ] FR-dns-repairs-1: The same room in two zones cannot read or overwrite the other zone.
-- [ ] FR-dns-repairs-2: Unsupported questions leave the store unchanged.
-- [ ] FR-dns-repairs-3: A clock-controlled test removes an idle entry after expiry.
-- [ ] FR-dns-repairs-4: Capacity tests reject writes without exceeding configured bounds.
-- [ ] FR-dns-repairs-5: Injected TXT names with another room, kind, or zone return an identity error.
-- [ ] FR-dns-repairs-6: A cancelled publish performs no further resolver calls.
+- [x] FR-dns-repairs-1: The same room in two zones cannot read or overwrite the other zone.
+- [x] FR-dns-repairs-2: Unsupported questions leave the store unchanged.
+- [x] FR-dns-repairs-3: A clock-controlled test removes an idle entry after expiry.
+- [x] FR-dns-repairs-4: Capacity tests reject writes without exceeding configured bounds.
+- [x] FR-dns-repairs-5: Injected TXT names with another room, kind, or zone return an identity error.
+- [x] FR-dns-repairs-6: A cancelled publish performs no further resolver calls.
 
 ## Out of scope
 No recursive resolver compatibility guarantee or encrypted DNS payload.
