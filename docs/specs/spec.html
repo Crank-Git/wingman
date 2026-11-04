@@ -264,7 +264,7 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><td>TURN and metrics</td><td><a href="html/feature-ops-existing.html">ops-existing</a></td><td>built</td><td>Existing behavior</td></tr>
 <tr><td>DNS isolation and resource limits</td><td><a href="html/feature-dns-repairs.html">dns-repairs</a></td><td>built</td><td>Epic 1: DNS repairs</td></tr>
 <tr><td>HTTPS safety and atomic consumption</td><td><a href="html/feature-https-repairs.html">https-repairs</a></td><td>built</td><td>Epic 2: HTTPS repairs</td></tr>
-<tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>issued</td><td>Epic 3: Peer repairs</td></tr>
+<tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>built</td><td>Epic 3: Peer repairs</td></tr>
 <tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>issued</td><td>Epic 4: Server operations</td></tr>
 <tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>issued</td><td>Epic 5: DynUpdate</td></tr>
 <tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>issued</td><td>Epic 6: Diagnostics</td></tr>
@@ -455,6 +455,8 @@ body.rv-open .layout { padding-right:21rem; }
 </ul>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
+</li>
 <li>2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
 </li>
 <li>2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
@@ -539,6 +541,7 @@ body.rv-open .layout { padding-right:21rem; }
 <tr><th>Work</th><th>Tracking</th><th>Members</th></tr>
 <tr><td>CI recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/74">#74</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/69">#69</a>, <a href="https://github.com/Crank-Git/wingman/issues/73">#73</a></td></tr>
 <tr><td>Concurrent coverage profiles</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/62">#62</a></td></tr>
+<tr><td>Ephemeral DNS port recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/84">#84</a></td></tr>
 </table></div><nav class="pager">
 <span></span>
 <a href="html/page-audit.html">Repository audit and evidence &rarr;</a>

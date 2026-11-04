@@ -2,7 +2,7 @@
 id: peer-repairs
 feature: Peer lifecycle and metric correctness
 epic: Epic 3: Peer repairs
-status: issued
+status: built
 issues: [27, 28, 29, 30, 31, 32]
 mockups: [mockups/08-peer-repairs.html]
 ---
@@ -68,12 +68,12 @@ Do not treat a later connection-closed callback as the original handshake error.
 Candidate utility fixes remain separate from Pion negotiation behavior.
 
 ## Acceptance criteria
-- [ ] FR-peer-repairs-1: An invalid role returns immediately without creating a connection.
-- [ ] FR-peer-repairs-2: A repeated Start returns a lifecycle error.
-- [ ] FR-peer-repairs-3: Repeated Close calls release resources once.
-- [ ] FR-peer-repairs-4: Concurrent collector updates pass the race detector.
-- [ ] FR-peer-repairs-5: A zero-value collector renders valid metrics after RecordCandidate.
-- [ ] FR-peer-repairs-6: Component 0 and component 257 return validation errors.
+- [x] FR-peer-repairs-1: An invalid role returns immediately without creating a connection.
+- [x] FR-peer-repairs-2: A repeated Start returns a lifecycle error.
+- [x] FR-peer-repairs-3: Repeated Close calls release resources once.
+- [x] FR-peer-repairs-4: Concurrent collector updates pass the race detector.
+- [x] FR-peer-repairs-5: A zero-value collector renders valid metrics after RecordCandidate.
+- [x] FR-peer-repairs-6: Component 0 and component 257 return validation errors.
 
 ## Out of scope
 No browser interface or media call support.

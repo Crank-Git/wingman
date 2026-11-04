@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: Peer lifecycle and metric correctness</h1>
-<p class="meta">Epic 3: Peer repairs &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 3: Peer repairs &nbsp; <span class="badge">built</span></p>
 <h2 id="peer-repairs-peer-lifecycle-and-metric-correctness">Peer lifecycle and metric correctness</h2>
 <h3 id="peer-repairs-purpose">Purpose</h3>
 <p>Make peer startup, cleanup, and diagnostics reliable.</p>
@@ -211,17 +211,17 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Test Close during startup, Close after success, duplicate Start, and cancellation. Do not treat a later connection-closed callback as the original handshake error. Candidate utility fixes remain separate from Pion negotiation behavior.</p>
 <h3 id="peer-repairs-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-peer-repairs-1: An invalid role returns immediately without creating a connection.
+<li>[x] FR-peer-repairs-1: An invalid role returns immediately without creating a connection.
 </li>
-<li>[ ] FR-peer-repairs-2: A repeated Start returns a lifecycle error.
+<li>[x] FR-peer-repairs-2: A repeated Start returns a lifecycle error.
 </li>
-<li>[ ] FR-peer-repairs-3: Repeated Close calls release resources once.
+<li>[x] FR-peer-repairs-3: Repeated Close calls release resources once.
 </li>
-<li>[ ] FR-peer-repairs-4: Concurrent collector updates pass the race detector.
+<li>[x] FR-peer-repairs-4: Concurrent collector updates pass the race detector.
 </li>
-<li>[ ] FR-peer-repairs-5: A zero-value collector renders valid metrics after RecordCandidate.
+<li>[x] FR-peer-repairs-5: A zero-value collector renders valid metrics after RecordCandidate.
 </li>
-<li>[ ] FR-peer-repairs-6: Component 0 and component 257 return validation errors.
+<li>[x] FR-peer-repairs-6: Component 0 and component 257 return validation errors.
 </li>
 </ul>
 <h3 id="peer-repairs-out-of-scope">Out of scope</h3>

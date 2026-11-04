@@ -121,7 +121,7 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 | TURN and metrics | [ops-existing](features/05-ops-existing.md) | built | Existing behavior |
 | DNS isolation and resource limits | [dns-repairs](features/06-dns-repairs.md) | built | Epic 1: DNS repairs |
 | HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | built | Epic 2: HTTPS repairs |
-| Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | issued | Epic 3: Peer repairs |
+| Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | built | Epic 3: Peer repairs |
 | Deployable servers and authentication | [server-operations](features/09-server-operations.md) | issued | Epic 4: Server operations |
 | RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | issued | Epic 5: DynUpdate |
 | Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | issued | Epic 6: Diagnostics |
@@ -317,6 +317,7 @@ Every milestone leaves tests green. The operator approves each promotion from de
 - No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 
 ## Changelog
+- 2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
 - 2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
 - 2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
 - 2026-11-04: The operator approves the spec and scaffold. Apply the reviewed files and retain the known defects as planned work.
@@ -397,3 +398,4 @@ Sub-issue bodies record dependencies within each epic. GitHub records each child
 |---|---|---|
 | CI recovery | [#74](https://github.com/Crank-Git/wingman/issues/74) | [#69](https://github.com/Crank-Git/wingman/issues/69), [#73](https://github.com/Crank-Git/wingman/issues/73) |
 | Concurrent coverage profiles | [#16](https://github.com/Crank-Git/wingman/issues/16) | [#62](https://github.com/Crank-Git/wingman/issues/62) |
+| Ephemeral DNS port recovery | [#27](https://github.com/Crank-Git/wingman/issues/27) | [#84](https://github.com/Crank-Git/wingman/issues/84) |
