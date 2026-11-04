@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -179,74 +178,12 @@ func runServe(ctx context.Context, args []string) (result error) {
 	} else if key == nil {
 		return errors.New("DNS requires --dns-tsig-key-file or explicit --local-demo")
 	}
-	httpsSrv, httpsListener, err := https.BindTLS(https.ServerConfig{
-		ListenAddr: *httpsListen, CertFile: *tlsCert, KeyFile: *tlsKey,
-		SecretFile: *secretFile, LocalDemo: *localDemo,
-	})
-	if err != nil {
-		return err
-	}
-	// Close also covers a later DNS bind failure before ServeTLS starts.
-	defer func() { result = closeHTTPSListener(httpsListener, result) }()
-	srv := dns.NewServer()
-	srv.ListenAddr, srv.Zone, srv.TSIGKey = *listen, *zone, key
-	err = srv.Start(ctx)
-	if err != nil {
-		return err
-	}
-	defer srv.Stop()
-	httpsResult := make(chan error, 1)
-	if httpsSrv != nil {
-		go func() { httpsResult <- httpsSrv.ServeTLS(httpsListener, "", "") }()
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			result = shutdownHTTPS(shutdownCtx, httpsSrv, httpsResult, result)
-		}()
-		fmt.Printf("HTTPS listening on https://%s\n", httpsListener.Addr())
-	}
-	fmt.Printf("wingman server listening on %s (zone %q)\n", srv.Addr(), *zone)
-
-	var turnSrv *turnserver.Server
-	if turnSrv, err = startTurnServer(os.Stdout, turnserver.Config{
-		Addr:         *turnAddr,
-		Username:     *turnUser,
-		Password:     *turnPass,
-		ExternalAddr: *turnExternal,
-	}); err != nil {
-		return err
-	}
-	if turnSrv != nil {
-		defer func() { _ = turnSrv.Close() }()
-	}
-
-	var metricsSrv *http.Server
-	if *metricsAddr != "" {
-		metricsSrv = &http.Server{
-			Addr:    *metricsAddr,
-			Handler: metrics.New().MetricsHandler(),
-		}
-		go func() {
-			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
-			}
-		}()
-		fmt.Printf("metrics listening on %s/metrics\n", *metricsAddr)
-		defer func() {
-			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-			_ = metricsSrv.Shutdown(shutdownCtx)
-		}()
-	}
-
-	select {
-	case <-ctx.Done():
-	case err := <-httpsResult:
-		// Keep the result available for the deferred goroutine join.
-		httpsResult <- err
-		return nil
-	}
-	return nil
+	return serveListeners(ctx, serveConfig{
+		zone: *zone, listen: *listen, key: key,
+		https:       https.ServerConfig{ListenAddr: *httpsListen, CertFile: *tlsCert, KeyFile: *tlsKey, SecretFile: *secretFile, LocalDemo: *localDemo},
+		metricsAddr: *metricsAddr,
+		turn:        turnserver.Config{Addr: *turnAddr, Username: *turnUser, Password: *turnPass, ExternalAddr: *turnExternal},
+	}, os.Stdout)
 }
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
