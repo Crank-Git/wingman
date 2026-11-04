@@ -402,5 +402,4 @@ Sub-issue bodies record dependencies within each epic. GitHub records each child
 | Concurrent coverage profiles | [#16](https://github.com/Crank-Git/wingman/issues/16) | [#62](https://github.com/Crank-Git/wingman/issues/62) |
 | Ephemeral DNS port recovery | [#27](https://github.com/Crank-Git/wingman/issues/27) | [#84](https://github.com/Crank-Git/wingman/issues/84) |
 | Server deployment repairs | [#33](https://github.com/Crank-Git/wingman/issues/33) | [#90](https://github.com/Crank-Git/wingman/issues/90), [#91](https://github.com/Crank-Git/wingman/issues/91), [#98](https://github.com/Crank-Git/wingman/issues/98) |
-
 | DynUpdate test recovery | [#40](https://github.com/Crank-Git/wingman/issues/40) | [#109](https://github.com/Crank-Git/wingman/issues/109) |
