@@ -452,6 +452,15 @@ func TestDispatchRoutesCommands(t *testing.T) {
 
 // TestRunPeerAnswerer drives the answerer through runPeer and chat.
 func TestRunPeerAnswerer(t *testing.T) {
+	runAnswerFixture(t, func(ctx context.Context, addr, room string, in, out *os.File) error {
+		opts := peerOpts{addr: addr, zone: defaultZone, room: room, label: "wingman"}
+		return runPeer(ctx, peer.RoleAnswerer, opts, in, out)
+	})
+}
+
+// runAnswerFixture keeps both peers alive until each handshake succeeds.
+func runAnswerFixture(t *testing.T, answer func(context.Context, string, string, *os.File, *os.File) error) {
+	t.Helper()
 	srv, err := startServe()
 	if err != nil {
 		t.Fatalf("startServe: %v", err)
@@ -459,32 +468,93 @@ func TestRunPeerAnswerer(t *testing.T) {
 	defer srv.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	room := "answerer-room"
-	offerDone := make(chan struct{})
+	in, input, err := os.Pipe()
+	if err != nil {
+		cancel()
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := in.Close(); err != nil {
+			t.Errorf("close stdin reader: %v", err)
+		}
+	})
+	var inputOnce sync.Once
+	closeInput := func() {
+		inputOnce.Do(func() {
+			if err := input.Close(); err != nil {
+				t.Errorf("close stdin writer: %v", err)
+			}
+		})
+	}
+	t.Cleanup(closeInput)
+	output, out, err := os.Pipe()
+	if err != nil {
+		cancel()
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	buf := &lockedBuffer{}
+	outputDone := make(chan error, 1)
 	go func() {
-		defer close(offerDone)
-		if _, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectOffer: %v", err)
+		_, err := io.Copy(buf, output)
+		outputDone <- err
+	}()
+	var workers sync.WaitGroup
+	offerReady := make(chan error, 1)
+	offerClosed := make(chan error, 1)
+	defer func() {
+		cancel()
+		closeInput()
+		workers.Wait()
+		if err := <-offerClosed; err != nil {
+			t.Errorf("close offer: %v", err)
+		}
+		if err := out.Close(); err != nil {
+			t.Errorf("close stdout writer: %v", err)
+		}
+		if err := <-outputDone; err != nil {
+			t.Errorf("read stdout: %v", err)
+		}
+		if err := output.Close(); err != nil {
+			t.Errorf("close stdout reader: %v", err)
 		}
 	}()
 
-	br := newBlockingReader()
-	// Let the handshake proceed, then EOF the chat so it returns.
+	room := "answerer-room"
+	workers.Add(2)
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		close(br.done)
+		defer workers.Done()
+		offer, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman")
+		offerReady <- err
+		if err != nil {
+			offerClosed <- nil
+			return
+		}
+		<-ctx.Done()
+		offerClosed <- offer.Close()
 	}()
-
-	out := &bytes.Buffer{}
-	opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman"}
-	if err := runPeer(ctx, peer.RoleAnswerer, opts, br, out); err != nil {
-		t.Fatalf("runPeer answerer: %v", err)
+	answerDone := make(chan error, 1)
+	go func() {
+		defer workers.Done()
+		answerDone <- answer(ctx, srv.Addr(), room, in, out)
+	}()
+	select {
+	case err := <-offerReady:
+		if err != nil {
+			t.Fatalf("connectOffer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connectOffer did not return")
 	}
-	<-offerDone
-	if !strings.Contains(out.String(), "answer: connected") {
-		t.Fatalf("missing connected notice: %q", out.String())
+	waitOut(t, buf, "answer: connected", 5*time.Second)
+	// EOF closes the answer Session, so both peers must finish Start first.
+	closeInput()
+	select {
+	case err := <-answerDone:
+		if err != nil {
+			t.Fatalf("answer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("answer did not return after EOF")
 	}
 }
 
@@ -564,41 +634,14 @@ func TestChatSendTextError(t *testing.T) {
 	}
 }
 
-// TestRunAnswerHappyPath drives the answerer through runAnswer with stdin
-// redirected to an empty file so the chat scanner hits EOF and returns.
+// TestRunAnswerHappyPath returns after EOF follows both successful handshakes.
 func TestRunAnswerHappyPath(t *testing.T) {
-	srv, err := startServe()
-	if err != nil {
-		t.Fatalf("startServe: %v", err)
-	}
-	defer srv.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	room := "answer-happy-room"
-	offerDone := make(chan struct{})
-	go func() {
-		defer close(offerDone)
-		if _, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectOffer: %v", err)
-		}
-	}()
-
-	// Redirect stdin to an empty file so the chat scanner hits EOF immediately.
-	oldStdin := os.Stdin
-	defer func() { os.Stdin = oldStdin }()
-	f, err := os.CreateTemp("", "wingman-stdin")
-	if err != nil {
-		t.Fatalf("temp stdin: %v", err)
-	}
-	defer f.Close()
-	os.Stdin = f
-
-	if err := runAnswer(ctx, []string{"--addr", srv.Addr(), "--room", room}); err != nil {
-		t.Fatalf("runAnswer: %v", err)
-	}
-	<-offerDone
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
+	runAnswerFixture(t, func(ctx context.Context, addr, room string, in, out *os.File) error {
+		os.Stdin, os.Stdout = in, out
+		return runAnswer(ctx, []string{"--addr", addr, "--room", room})
+	})
 }
 
 // TestCLIExec builds the binary and runs it end to end. This exercises main()
