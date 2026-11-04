@@ -15,13 +15,17 @@ Tests live beside their source. scripts/ owns verification tools.
 ## Commands
 - Build: go build ./cmd/wingman
 - Run: go run ./cmd/wingman serve
+- Verify: bash scripts/verify.sh
 - Test and coverage: bash scripts/coverage.sh
 - Race check: go test -race ./...
-- Format inspection: gofmt -l cmd internal
+- Format check: bash scripts/check-format.sh
+- Complexity check: python3 scripts/check-complexity.py
+- Manual run: .agents/skills/run/SKILL.md
+- Verification procedure: .agents/skills/test/SKILL.md
 - Spec render: python3 docs/specs/render-spec.py
 
 Set GOCACHE to a writable temporary directory when the normal cache is restricted.
-The race check currently fails in StubTransport. Foundation repairs that defect before it becomes a required gate.
+The verification command includes the race check. Read docs/release.md for tool prerequisites and release steps.
 
 ## Conventions
 Use Go package names and colocated tests. Preserve error causes.

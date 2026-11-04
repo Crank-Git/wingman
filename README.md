@@ -93,12 +93,17 @@ scripts/         coverage gate (>= 95%)
 
 ## Development
 
-- **Language:** Go (pure, no CGO).
-- **Tests:** TDD throughout. CI enforces a **95% statement-coverage gate**
-  (`scripts/coverage.sh`) plus `go vet`.
+- **Tools:** Go 1.25.0, Python 3, and gocyclo v0.6.0.
+  The race detector requires a C compiler and CGO support.
+- **Checks:** CI checks format, complexity, vet, race, the CLI build, and
+  aggregate statement coverage of at least **95%**.
 - **Branches:** `dev` is the active integration branch; features branch off
-  `dev` and merge back via PR. `main` is the protected release branch.
+  `dev` and merge back via PR. `main` is the release branch.
+  Each promotion to `main` requires explicit operator approval.
 
 ```bash
-bash scripts/coverage.sh   # vet + test + 95% coverage gate
+bash scripts/verify.sh
 ```
+
+Read the [release guide](docs/release.md) for tool setup, required CI checks,
+operator branch protection steps, and approved promotion to `main`.
