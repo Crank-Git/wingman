@@ -100,7 +100,7 @@ type Session struct {
 	pc        peerConn
 	dataChan  *webrtc.DataChannel
 	onMessage MessageHandler
-	met       *metrics.Metrics
+	met       *metrics.Metrics // mu guards collector replacement and callback snapshots.
 
 	openCh chan struct{}
 }
@@ -126,9 +126,8 @@ func (s *Session) OnMessage(h MessageHandler) {
 	s.mu.Unlock()
 }
 
-// WithMetrics registers a metrics collector. When set, the session records the
-// type of every gathered ICE candidate (host, srflx, relay, ...) so the candidate
-// distribution can be reported. It returns the session to allow chaining.
+// WithMetrics sets the collector and returns the session.
+// It is safe to call during ICE callbacks. A nil collector disables observations.
 func (s *Session) WithMetrics(m *metrics.Metrics) *Session {
 	s.mu.Lock()
 	s.met = m
@@ -204,8 +203,11 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 		if c == nil {
 			return
 		}
-		if s.met != nil {
-			s.met.RecordCandidate(c.Typ.String())
+		s.mu.Lock()
+		m := s.met
+		s.mu.Unlock()
+		if m != nil {
+			m.RecordCandidate(c.Typ.String())
 		}
 	})
 
