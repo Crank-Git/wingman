@@ -76,7 +76,7 @@ esac
                 self.assertIn("namespace host cleanup: complete", result.stdout)
                 self.assertIn(f"namespace scenario: {scenario} fails", result.stderr)
 
-    def test_relay_requires_both_selected_types(self):
+    def make_relay_fixture(self):
         wingman = self.path / "wingman"
         wingman.write_text('''#!/usr/bin/env bash
 case "$1" in
@@ -92,6 +92,10 @@ esac
         wingman.chmod(0o755)
         ip = self.path / "ip"
         ip.write_text('''#!/usr/bin/env bash
+if [[ "$*" == *'route get '*'ipproto 17 sport 49152' ]]; then
+  [[ "${HOST_ROUTE_AVAILABLE:-}" == 1 ]] && exit 0
+  exit 2
+fi
 if [[ $1 == netns && $2 == exec ]]; then shift 3; exec "$@"; fi
 ''')
         ip.chmod(0o755)
@@ -109,6 +113,20 @@ cleanup() {
 }
 trap cleanup EXIT
 ''' + source)
+        return script
+
+    def test_relay_rejects_available_host_route(self):
+        script = self.make_relay_fixture()
+        result = subprocess.run(["bash", str(script), "relay"],
+                                env=dict(self.env, HOST_ROUTE_AVAILABLE="1",
+                                         SELECTED_PAIR="local=relay remote=relay"),
+                                capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("host candidate route remains available", result.stderr)
+        self.assertNotIn("namespace relay: both peers", result.stdout)
+
+    def test_relay_requires_both_selected_types(self):
+        script = self.make_relay_fixture()
         for pair in ["local=host remote=relay", "local=relay remote=host", "unavailable"]:
             with self.subTest(pair=pair):
                 result = subprocess.run(["bash", str(script), "relay"],
