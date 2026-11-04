@@ -1,0 +1,880 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wingman — Scaffold proposal</title>
+<style>
+:root { --bg:#ffffff; --fg:#1a1a24; --muted:#5a5a68; --line:#e3e3ea; --accent:#3452c8;
+        --card:#f6f6f9; --warn-bg:#fff7e8; --warn-line:#e8b34a; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14141b; --fg:#e8e8ee; --muted:#9a9aa8; --line:#2c2c38; --accent:#8ea6ff;
+          --card:#1c1c26; --warn-bg:#2a2318; --warn-line:#a87c2a; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+       font:16px/1.6 system-ui,-apple-system,sans-serif; }
+.layout { display:flex; min-height:100vh; }
+aside.site { width:17rem; flex:none; border-right:1px solid var(--line);
+             padding:1.2rem 1rem 3rem; position:sticky; top:0; height:100vh;
+             overflow-y:auto; background:var(--card); }
+aside.site h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+                color:var(--muted); margin:1.2rem 0 .3rem; border:none; padding:0; }
+aside.site ul { list-style:none; margin:0; padding:0; }
+aside.site li { margin:.15rem 0; }
+aside.site a { text-decoration:none; color:var(--fg); font-size:.92rem;
+               display:block; padding:.15rem .5rem; border-radius:6px; }
+aside.site a:hover { background:var(--bg); }
+aside.site a.current { background:var(--accent); color:#fff; }
+aside.site a.sub { padding-left:1.3rem; font-size:.84rem; color:var(--muted); }
+aside.site .brand { font-weight:700; font-size:1.05rem; }
+main { max-width:60rem; margin:0 auto; padding:2rem 1.5rem 6rem; min-width:0; flex:1; }
+h1,h2,h3,h4 { line-height:1.25; }
+h1 { font-size:2rem; margin:.2rem 0; }
+h2 { border-bottom:1px solid var(--line); padding-bottom:.3rem; margin-top:2.5rem; }
+a { color:var(--accent); }
+code { background:var(--card); padding:.1em .35em; border-radius:4px; font-size:.9em; }
+pre.code { background:var(--card); border:1px solid var(--line); border-radius:8px;
+           padding:1rem; overflow-x:auto; }
+pre.code code { background:none; padding:0; }
+.table-wrap { overflow-x:auto; }
+table { border-collapse:collapse; margin:1rem 0; min-width:50%; }
+th,td { border:1px solid var(--line); padding:.4rem .7rem; text-align:left; }
+th { background:var(--card); }
+blockquote { border-left:3px solid var(--accent); margin:1rem 0; padding:.2rem 1rem;
+             color:var(--muted); }
+.meta { color:var(--muted); margin-bottom:2rem; }
+.badge { display:inline-block; padding:.1rem .6rem; border-radius:999px;
+         border:1px solid var(--accent); color:var(--accent); font-size:.85rem; }
+.diagram { background:var(--card); border:1px solid var(--line); border-radius:8px;
+           padding:1rem; margin:1rem 0; overflow-x:auto; }
+.diagram pre.mermaid { margin:0; }
+.diagram.raw::before { content:"diagram source (assets/mermaid.min.js not vendored)";
+                       display:block; color:var(--muted); font-size:.8rem;
+                       margin-bottom:.5rem; }
+.callout-h, .callout-h ~ p, .callout-h ~ ul { background:var(--warn-bg); }
+.callout-h { border-left:4px solid var(--warn-line); padding:.3rem .8rem; }
+.mockup { margin:1.5rem 0; }
+.mockup iframe { width:100%; height:32rem; border:1px solid var(--line);
+                 border-radius:8px; background:#fff; }
+nav.pager { display:flex; justify-content:space-between; margin-top:3rem;
+            border-top:1px solid var(--line); padding-top:1rem; }
+@media (max-width: 900px) {
+  .layout { display:block; }
+  aside.site { width:auto; height:auto; position:static; border-right:none;
+               border-bottom:1px solid var(--line); }
+}
+h1[id]:hover .rv-add, h2[id]:hover .rv-add, h3[id]:hover .rv-add,
+h4[id]:hover .rv-add { opacity:1; }
+.rv-add { opacity:0; margin-left:.5rem; font-size:.75rem; cursor:pointer;
+          border:1px solid var(--accent); color:var(--accent); background:none;
+          border-radius:6px; padding:0 .45rem; vertical-align:middle;
+          transition:opacity .15s; }
+.rv-comment { border:1px solid var(--warn-line); border-left-width:4px;
+              background:var(--warn-bg); border-radius:8px; padding:.6rem .9rem;
+              margin:.8rem 0; font-size:.92rem; }
+.rv-comment.rv-resolved { opacity:.6; border-left-color:var(--line); }
+.rv-comment .rv-head { display:flex; gap:.6rem; align-items:center;
+                       color:var(--muted); font-size:.8rem; margin-bottom:.3rem; }
+.rv-comment .rv-head button { font-size:.75rem; cursor:pointer; background:none;
+                              border:1px solid var(--line); border-radius:6px;
+                              color:var(--muted); padding:0 .4rem; }
+.rv-comment .rv-body { white-space:pre-wrap; }
+.rv-editor textarea { width:100%; min-height:5rem; background:var(--bg);
+                      color:var(--fg); border:1px solid var(--line);
+                      border-radius:6px; padding:.5rem; font:inherit; }
+.rv-editor .rv-actions { margin-top:.4rem; display:flex; gap:.5rem; }
+.rv-editor button { cursor:pointer; border-radius:6px; padding:.2rem .8rem;
+                    border:1px solid var(--accent); background:var(--accent);
+                    color:#fff; }
+.rv-editor button.rv-cancel { background:none; color:var(--accent); }
+#rv-toggle { position:fixed; right:1rem; bottom:1rem; z-index:60;
+             background:var(--accent); color:#fff; border:none; cursor:pointer;
+             border-radius:999px; padding:.5rem 1rem; font-size:.85rem;
+             box-shadow:0 2px 10px rgba(0,0,0,.2); }
+#rv-drawer { position:fixed; top:0; right:0; bottom:0; width:21rem; z-index:55;
+             background:var(--card); border-left:1px solid var(--line);
+             display:flex; flex-direction:column; transform:translateX(100%);
+             transition:transform .2s ease; box-shadow:-4px 0 16px rgba(0,0,0,.12); }
+body.rv-open #rv-drawer { transform:none; }
+body.rv-open .layout { padding-right:21rem; }
+#rv-drawer header { padding:.8rem 1rem .5rem; border-bottom:1px solid var(--line); }
+#rv-drawer header .rv-count { color:var(--muted); font-size:.8rem; }
+#rv-drawer .rv-compose { padding:.8rem 1rem; border-bottom:1px solid var(--line); }
+#rv-drawer .rv-compose label { display:block; font-size:.75rem;
+                               color:var(--muted); margin-bottom:.25rem; }
+#rv-drawer .rv-compose select { width:100%; margin-bottom:.4rem;
+             background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:6px; padding:.3rem; font:inherit; font-size:.85rem; }
+#rv-drawer .rv-compose textarea { width:100%; min-height:5.5rem;
+             background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:6px; padding:.5rem; font:inherit; font-size:.9rem; }
+#rv-drawer .rv-compose .rv-live { font-size:.72rem; color:var(--muted); }
+#rv-drawer .rv-list { flex:1; overflow-y:auto; padding:.6rem 1rem; }
+#rv-drawer .rv-item { border:1px solid var(--line); border-left:3px solid
+             var(--warn-line); border-radius:8px; padding:.45rem .6rem;
+             margin-bottom:.6rem; font-size:.82rem; cursor:pointer; }
+#rv-drawer .rv-item.rv-resolved { opacity:.55; border-left-color:var(--line); }
+#rv-drawer .rv-item .rv-where { color:var(--accent); font-size:.72rem; }
+#rv-drawer .rv-item .rv-meta { color:var(--muted); font-size:.72rem;
+                               display:flex; gap:.5rem; align-items:center; }
+#rv-drawer .rv-item .rv-meta button { font-size:.7rem; cursor:pointer;
+             background:none; border:1px solid var(--line); border-radius:5px;
+             color:var(--muted); padding:0 .35rem; }
+#rv-drawer .rv-item .rv-text { white-space:pre-wrap; margin:.15rem 0; }
+#rv-drawer footer { padding:.6rem 1rem; border-top:1px solid var(--line);
+                    display:flex; gap:.5rem; flex-wrap:wrap; }
+#rv-drawer footer button, #rv-drawer .rv-compose button {
+  cursor:pointer; border:1px solid var(--accent); background:none;
+  color:var(--accent); border-radius:6px; padding:.2rem .7rem; font-size:.8rem; }
+#rv-drawer .rv-compose button.rv-primary { background:var(--accent); color:#fff; }
+#rv-drawer .rv-otherpages { color:var(--muted); font-size:.75rem;
+                            margin:.4rem 0 0; }
+@media (max-width: 1200px) { body.rv-open .layout { padding-right:0; } }
+</style>
+</head>
+<body data-page="page-scaffold-proposal" data-rvkey="wingman">
+<div class="layout">
+<aside class="site"><a class="brand" href="../spec.html">Wingman</a>
+<h2>Spec</h2><ul>
+<li><a href="../spec.html">Overview &amp; index</a></li>
+</ul>
+<h2>Pages</h2><ul>
+<li><a href="page-audit.html">Repository audit and evidence</a></li>
+<li><a class="current" href="page-scaffold-proposal.html">Scaffold proposal</a></li>
+</ul>
+<h2>Features</h2><ul>
+<li><a href="feature-foundation.html">Foundation gaps</a></li>
+<li><a href="feature-framing.html">Signal framing and names</a></li>
+<li><a href="feature-dns-existing.html">DNS query transport</a></li>
+<li><a href="feature-peer-existing.html">Peer handshake and chat</a></li>
+<li><a href="feature-https-existing.html">HTTPS fallback transport</a></li>
+<li><a href="feature-ops-existing.html">TURN and metrics</a></li>
+<li><a href="feature-dns-repairs.html">DNS isolation and resource limits</a></li>
+<li><a href="feature-https-repairs.html">HTTPS safety and atomic consumption</a></li>
+<li><a href="feature-peer-repairs.html">Peer lifecycle and metric correctness</a></li>
+<li><a href="feature-server-operations.html">Deployable servers and authentication</a></li>
+<li><a href="feature-dynupdate.html">RFC 2136 DynUpdate transport</a></li>
+<li><a href="feature-diagnostics.html">Diagnostics and network verification</a></li>
+</ul></aside>
+<main>
+<h1>Scaffold proposal</h1>
+<h1 id="scaffold-proposal-scaffold-proposal">Scaffold proposal</h1>
+<h2 id="scaffold-proposal-approval-scope">Approval scope</h2>
+<p>The operator approved these file contents on 2026-11-04. The scaffold now contains these files. Approval includes file creation and the two .gitignore additions. Existing content remains intact. The scaffold targets Codex only. No Claude files are proposed. The active CODEX_PERMISSION_PROFILE is issue_flow at scaffold creation. The session already grants write access to .agents/. No permission changes are proposed.</p>
+<h2 id="scaffold-proposal-hooks">Hooks</h2>
+<p>No hook is proposed. Verification belongs in the test skill and CI. No .codex/ file needs an edit. Project hooks would require the operator to trust that configuration layer.</p>
+<h2 id="scaffold-proposal-skills">Skills</h2>
+<ul>
+<li>run: Start the local DNS service and two CLI peers.
+</li>
+<li>test: Run coverage and the relevant concurrency or integration checks.
+</li>
+</ul>
+<h2 id="scaffold-proposal-proposed-files">Proposed files</h2>
+<h3 id="scaffold-proposal-agents-md">AGENTS.md</h3>
+<pre class="code"><code># Wingman
+
+Wingman exchanges WebRTC SDP through DNS or HTTPS. It then carries text through WebRTC.
+The inherited baseline has known defects. Built feature records describe observed behavior, not production readiness.
+
+## Specification
+Read docs/specs/spec.md. Read the feature file for the active issue.
+Keep planned behavior distinct from existing behavior.
+
+## Layout and stack
+Go 1.25.0; Pion WebRTC, Pion TURN, and miekg/dns.
+cmd/wingman owns the CLI. internal/ owns transport, peer, ICE, TURN, and metrics packages.
+Tests live beside their source. scripts/ owns verification tools.
+
+## Commands
+- Build: go build ./cmd/wingman
+- Run: go run ./cmd/wingman serve
+- Test and coverage: bash scripts/coverage.sh
+- Race check: go test -race ./...
+- Format inspection: gofmt -l cmd internal
+- Spec render: python3 docs/specs/render-spec.py
+
+Set GOCACHE to a writable temporary directory when the normal cache is restricted.
+The race check currently fails in StubTransport. Foundation repairs that defect before it becomes a required gate.
+
+## Conventions
+Use Go package names and colocated tests. Preserve error causes.
+Use concise imperative commit subjects. Follow existing fix:, refactor:, and chore: prefixes when applicable.
+Read docs/rules/quality.md before source or test changes.
+Read docs/rules/ste.md before prose, comments, test names, issues, or PR text.
+Read docs/rules/external-apis.md before external interface changes.
+
+## Branch and release model
+Merge batch PRs into dev. Promote dev to main only after explicit operator approval.
+Keep specifications, issues, and PRs public. Do not commit credential values.
+
+## Filing gate
+A finding earns a tracker issue in five cases: behavior, user-visible output, a guard that guards nothing, a blocked epic, or a maintainer ruling.
+A wrong product description under docs/specs/ earns a spec-update issue.
+Repair every other finding in the change set that found it. File no separate issue.
+If a repair changes behavior, stop that repair and file a behavior finding.
+
+Route repairs as follows:
+- During issue work: the issue PR, within files it already touches.
+- During integration review: a documentation commit on the integration branch before the CI-trigger commit.
+- With nothing open: a documentation-only PR into dev. Do not create a tracker issue for that repair.
+
+A changelog entry records a decision at a batch gate.
+Do not require a changelog row, spec edit, or accuracy pass per change set or batch member.
+A batch that follows the approved plan needs no changelog entry.</code></pre>
+<h3 id="scaffold-proposal-docs-rules-ste-md">docs/rules/ste.md</h3>
+<pre class="code"><code># STE — the writing standard for everything this plugin produces
+
+Every document and every tracker issue this plugin writes uses **Simplified Technical
+English (STE)**. This file is the standard. Load it before you write a spec, a feature
+file, an issue body, an `AGENTS.md`, a project rule, or a user manual page.
+
+STE exists because the readers of these artifacts — engineers, agents, and future
+planning waves — must all extract the *same* meaning from a sentence. A requirement that
+reads two ways gets built two ways.
+
+&gt; **About the source.** ASD-STE100 is the aerospace specification this standard derives
+&gt; from. Its approved-word dictionary is copyrighted and is **not** reproduced here. What
+&gt; follows is the enforceable subset: the writing rules, plus a per-project Terms list that
+&gt; does the job the dictionary does. Where this file and ASD-STE100 differ, this file wins
+&gt; for this plugin's output.
+
+---
+
+## 1 — What must be STE, and what must not
+
+**Write in STE:**
+
+| Artifact | Written by |
+|---|---|
+| `docs/specs/spec.md` and every `docs/specs/features/*.md` | project-planner |
+| `docs/specs/spec.html` prose | project-planner |
+| `AGENTS.md`, `docs/rules/*.md`, `skills/*/SKILL.md` | project-planner |
+| `CLAUDE.md`, `.claude/rules/*.md`, `.claude/skills/*/SKILL.md` in a dual-harness project | project-planner |
+| Every tracker issue title and body (epic, sub-issue, hotfix, spec-update, review finding) | spec-to-issues, issue-flow PM, project-review PM |
+| Issue comments that state a decision, a plan, or a question | issue-flow PM |
+| Spec `## Changelog` lines | issue-flow PM |
+| `docs/manual/*.md` user manual pages | review-scribe |
+| **Code comments and doc comments** — inline comments, docstrings, JSDoc/TSDoc, module headers, test descriptions | issue-worker, review-scribe |
+
+**Never rewrite into STE — reproduce verbatim:**
+
+- Anything quoted from a person: user answers, review comments, requirements the user
+  dictated. Quote it, then restate it in STE underneath if it needs clarifying.
+- Evidence: error messages, log excerpts, console output, test names, stack traces,
+  command output, `file:line` references.
+- Code, config, commands, JSON, file paths, identifiers, label names.
+- Third-party product names and API field names.
+- UI copy inside mockups — that is product content, and the design decides it.
+
+Rewriting evidence destroys it. Rewriting a quote misrepresents the person.
+
+---
+
+## 2 — The rules
+
+### Sentences
+
+1. **A procedure sentence is 20 words or fewer. A description sentence is 25 or fewer.**
+   Count the words. Over the limit, split it.
+2. **One instruction per sentence.** "Create the branch and copy the env files" is two
+   steps. Make it two.
+3. **One topic per paragraph. Six sentences maximum.**
+4. **Put the condition first, then the action.** "If the test fails, revert the commit" —
+   not "Revert the commit if the test fails." The reader must know whether to keep reading
+   before they act.
+5. **Put the warning before the step it applies to**, never after. A caution the reader
+   meets after acting is not a caution.
+
+### Words
+
+6. **One word, one meaning, one part of speech.** Choose the meaning the project needs and
+   never use that word another way. If `batch` is a noun in this project, do not write
+   "batch the issues" — write "group the issues into a batch".
+7. **One concept, one word.** Never rotate synonyms for variety. If it is a "sub-issue",
+   it is never also a "child issue", a "member", or a "task".
+8. **Keep noun clusters to three words.** "The batch integration branch merge gate" is
+   five. Write "the merge gate for the batch's integration branch".
+9. **No metaphor, idiom, or slang.** Not "rebase storm", "burn CI", "the pipeline
+   starves", "clobber", "stomp", "in the weeds". State the mechanism instead.
+10. **No abbreviation the project has not defined**, and define each one once, on first
+    use, in the Terms list.
+
+### Grammar
+
+11. **Active voice.** "The PM merges the batch PR" — not "The batch PR is merged."
+    The reader must know who acts.
+12. **Present tense** for behaviour; **imperative** for instructions.
+13. **Keep the articles.** Write "the branch", not "branch". Dropped articles create
+    genuine ambiguity about whether one or many are meant.
+14. **No `-ing` form as a noun or as a heading.** "Batching" → "How to form a batch".
+    "Grouping heuristics" → "How to group loose issues".
+15. **Write positively.** State what to do. Keep a prohibition only when the wrong action
+    is likely and costly, and then state it once, plainly.
+16. **Use a vertical list** whenever a sentence would carry more than two conditions,
+    parameters, or alternatives.
+
+---
+
+## 3 — Project Terms
+
+Use the controlled vocabulary in `docs/specs/spec.md`, section `Terms`.
+
+## 4 — Patterns for the artifacts
+
+### A functional requirement
+
+One testable statement, active voice, present tense, no conjunction.
+
+~~~
+Bad:  FR-auth-3 — Users should be able to reset their password and the system will
+                  email them a link that expires after a while.
+Good: FR-auth-3 — The project sends a password-reset link to the account's email address.
+      FR-auth-4 — A password-reset link expires 60 minutes after the project sends it.
+~~~
+
+"should be able to" is not testable. "after a while" is not a value. Two requirements
+were hiding in one sentence.
+
+### An acceptance criterion
+
+Write the observable result, not the implementation.
+
+~~~
+Bad:  Password reset works correctly.
+Good: The account receives an email that contains a reset link.
+      The reset link opens the reset form.
+      The reset link shows an expiry message 60 minutes after the project sends it.
+~~~
+
+### An issue title
+
+Imperative verb, one deliverable, 10 words or fewer, no ticket-speak.
+
+~~~
+Bad:  Auth stuff / password reset improvements (part 2)
+Good: Send a password-reset email to the account
+~~~
+
+### An issue body
+
+Each heading holds one kind of information. No prose that spans headings.
+
+~~~markdown
+## Context
+The project has no way to recover an account. FR-auth-3 and FR-auth-4 define the flow.
+
+## What to build
+1. Add a reset-request form at `/account/reset`.
+2. Send an email that contains a single-use reset link.
+3. Expire the link 60 minutes after the project sends it.
+
+## Acceptance criteria
+- [ ] The account receives an email that contains a reset link.
+- [ ] The reset link opens the reset form.
+- [ ] The reset link shows an expiry message after 60 minutes.
+
+## Out of scope
+This issue does not change the sign-in form.
+~~~
+
+### A user manual step
+
+Second person, present tense, one action per step, the screenshot after the step.
+
+~~~
+Bad:  After navigating to the settings area, you'll want to hit Save once you've made
+      whatever changes you need.
+Good: 1. Select **Settings**.
+      2. Change the fields you want to change.
+      3. Select **Save**. The project shows a confirmation message.
+~~~
+
+### A code comment
+
+The rules in § 2 apply unchanged. Three of them do the most work in code, because a
+comment is read in a hurry, out of context, months later.
+
+**One sentence, one fact. Active voice. Say why, not what.**
+
+~~~
+Bad:  // Here we're basically just looping through all the users and, if they haven't
+      // been seen in a while, we go ahead and clean them up (this was added because
+      // of the memory thing).
+Good: // Remove accounts that have been inactive for 90 days.
+      // The session cache holds every account it has seen, so inactive accounts leak.
+~~~
+
+**Name the reason a reader cannot see.** Code already states what it does. A comment that
+repeats the code is noise; a comment that states the constraint, the reason, or the
+consequence is the one worth reading.
+
+~~~
+Bad:  // increment the counter
+      counter += 1
+Good: // The provider rejects a batch larger than 500 items.
+      const MAX_BATCH = 500
+~~~
+
+**A docstring opens with one sentence that states the result.** Then the parameters, then
+the failure modes. No metaphor, no `-ing` opener.
+
+~~~
+Bad:  /** Handles doing the thing with the user's stuff and returns whatever it finds. */
+Good: /**
+       * Return the account that owns the session token.
+       *
+       * @param token - A session token from the `Authorization` header.
+       * @returns The account, or `null` when the token is expired or unknown.
+       * @throws StoreError - The account store is unreachable.
+       */
+~~~
+
+**Test names are sentences too.** One behaviour per name, present tense, active voice:
+`rejects a reset link older than 60 minutes`, not `test reset link expiry stuff 2`.
+
+Verbatim in comments, as everywhere: quoted error strings, URLs, identifiers, spec IDs
+(`FR-auth-3`), issue references (`#123`), and any text copied from a specification.
+
+Marker comments keep their conventional keyword — `TODO`, `FIXME`, `HACK` — because
+tooling and the `code-auditor` match on it. Write the body of the marker in STE, and name
+the issue: `// TODO(#412): Replace the fixed 60-minute expiry with the configured value.`
+
+### A PM decision comment
+
+State the decision, then the reason. One sentence each.
+
+~~~
+Good: Shipping batch #42 without sub-issue #57. #57 is parked on a product question,
+      and the other four members do not depend on it. #57 moves to the next batch.
+~~~
+
+---
+
+## 5 — Check before you write the file
+
+- [ ] No sentence is longer than 25 words. No instruction is longer than 20.
+- [ ] Every step holds one instruction.
+- [ ] Every condition comes before its action; every warning comes before its step.
+- [ ] Every domain word is in the Terms list, used with one meaning and one part of speech.
+- [ ] No synonym rotation: one concept, one word, throughout the document.
+- [ ] No noun cluster longer than three words.
+- [ ] No metaphor, idiom, or undefined abbreviation.
+- [ ] Active voice, present tense, articles present, no `-ing` nouns or headings.
+- [ ] Lists carry anything with more than two conditions or parameters.
+- [ ] Quotes, evidence, code, paths and identifiers are verbatim and unedited.
+- [ ] Code comments state the reason, not the code. Docstrings open with the result.
+      Test names read as one behaviour. Marker keywords (`TODO`, `FIXME`) kept, bodies
+      written to the standard and carrying an issue number.</code></pre>
+<h3 id="scaffold-proposal-docs-rules-quality-md">docs/rules/quality.md</h3>
+<pre class="code"><code># Go quality rules
+
+Read these rules before changes to cmd/, internal/, scripts/, or tests.
+
+- Keep Go source formatted with gofmt.
+- Return errors with the failed operation. Preserve causes with %w.
+- Handle every new error result unless the code states why loss is acceptable.
+- Guard every shared mutable field with one documented synchronization rule.
+- Make the owner close every connection, listener, timer, and background goroutine.
+- Bound every request body and every retained collection reachable from network input.
+- Keep credentials and raw SDP out of default logs.
+- Use a regression test for each repaired behavior.
+- Keep new functions at cyclomatic complexity 20 or below.
+- Use the existing package boundary until a second caller needs an abstraction.
+- Add configuration only when a caller needs a different value.
+- Remove dead code and commented-out code in changed regions.
+- State the reason in comments. Remove comments that restate the code.
+- Avoid recovery that logs an error and continues with corrupt state.
+- Make failed scripts exit nonzero with a cause on stderr.
+- Keep tests independent from public internet services.
+- Apply format, complexity, vet, race, and coverage checks once Foundation provides them.
+
+Reviewers assign pass or fail per applicable rule. Existing violations outside the changed scope do not authorize unrelated refactors.</code></pre>
+<h3 id="scaffold-proposal-docs-rules-external-apis-md">docs/rules/external-apis.md</h3>
+<pre class="code"><code># External interface rules
+
+Read these rules before code uses an external library, service, or CLI.
+
+Read the pinned documentation before the first call. Record the version and source in the PR.
+Verify request fields, response fields, errors, limits, timeouts, and authentication.
+If an interface contradicts the spec, report the conflict before a behavior change.
+Treat third-party examples as examples, rather than proof of this project's required behavior.
+
+Pinned interfaces:
+- miekg/dns v1.1.73: https://pkg.go.dev/github.com/miekg/dns@v1.1.73
+- Pion WebRTC v4.2.26: https://pkg.go.dev/github.com/pion/webrtc/v4@v4.2.26
+- Pion TURN v5.1.3: https://pkg.go.dev/github.com/pion/turn/v5@v5.1.3
+- DNS UPDATE: https://www.rfc-editor.org/rfc/rfc2136
+- TSIG: https://www.rfc-editor.org/rfc/rfc8945
+
+Verify BIND image version and update-policy documentation before the integration fixture.
+No infrastructure or marketplace change follows from documentation access.</code></pre>
+<h3 id="scaffold-proposal-agents-skills-run-skill-md">.agents/skills/run/SKILL.md</h3>
+<pre class="code"><code>---
+name: run
+description: Start Wingman locally for manual checks.
+---
+
+# Run Wingman
+
+1. Read docs/specs/spec.md for configuration.
+2. Run go run ./cmd/wingman serve in one terminal.
+3. Copy the printed host and port.
+4. Run go run ./cmd/wingman offer --addr HOST:PORT --room demo in another terminal.
+5. Run go run ./cmd/wingman answer --addr HOST:PORT --room demo in a third terminal.
+6. Send a line after the channel opens.
+7. Stop each process with Ctrl-C.</code></pre>
+<h3 id="scaffold-proposal-agents-skills-test-skill-md">.agents/skills/test/SKILL.md</h3>
+<pre class="code"><code>---
+name: test
+description: Run Wingman verification and report results.
+---
+
+# Test Wingman
+
+1. Read the test strategy in docs/specs/spec.md.
+2. Run bash scripts/coverage.sh.
+3. Run go test -race ./... for concurrency changes.
+4. Run the relevant integration smoke path for transport or peer changes.
+5. Report command results and any skipped prerequisites.
+
+The inherited race suite fails in StubTransport. Do not report that failure as a pass.
+After Foundation lands, use scripts/verify.sh as the primary command.</code></pre>
+<h3 id="scaffold-proposal-docs-external-md">docs/external.md</h3>
+<pre class="code"><code># External configuration
+
+No application environment variables exist in the inherited configuration.
+Use CLI help for current flags. Use docs/specs/spec.md for planned configuration.
+
+Credential names: signaling secret, TURN username, TURN password, DNS TSIG key name, DNS TSIG secret.
+Planned file references: --signaling-secret-file, --dns-tsig-key-file, --tls-cert, --tls-key.
+Keep credential values outside the repository. Examples use placeholders.
+
+No hosted endpoint, deployment account, test account, or owned domain has been supplied.
+The local demo uses loopback services. New integration tests create disposable rooms and credentials.
+Support and project changes use the public Crank-Git/wingman GitHub repository.</code></pre>
+<h3 id="scaffold-proposal-gitignore-additions">.gitignore additions</h3>
+<pre class="code"><code>.worktrees/
+.issue-flow.local.json</code></pre>
+<h3 id="scaffold-proposal-docs-adr-0000-template-md">docs/adr/0000-template.md</h3>
+<pre class="code"><code># Decision template
+
+Date: 2026-11-04
+
+Status: proposed
+
+## Context
+State the constraint.
+
+## Decision
+State the decision.
+
+## Consequences
+State the consequences.</code></pre>
+<h3 id="scaffold-proposal-docs-adr-0001-go-and-pion-md">docs/adr/0001-go-and-pion.md</h3>
+<pre class="code"><code># Go and Pion
+
+Date: 2026-11-04
+
+Status: accepted
+
+## Context
+Reconstructed from go.mod and internal/peer on 2026-11-04. The original rationale is unknown.
+
+## Decision
+Retain Go with Pion WebRTC and TURN.
+
+## Consequences
+The CLI needs no separate application runtime. Library upgrades require network regression tests.</code></pre>
+<h3 id="scaffold-proposal-docs-adr-0002-ephemeral-storage-md">docs/adr/0002-ephemeral-storage.md</h3>
+<pre class="code"><code># Ephemeral room storage
+
+Date: 2026-11-04
+
+Status: accepted
+
+## Context
+Reconstructed from the DNS and HTTPS maps on 2026-11-04. No persistent database exists.
+
+## Decision
+Record the existing choice of in-memory storage. Planned limits repair resource handling.
+
+## Consequences
+Restarts lose custom-server rooms. DynUpdate records belong to an external authoritative server.</code></pre>
+<h3 id="scaffold-proposal-docs-adr-0003-service-trust-md">docs/adr/0003-service-trust.md</h3>
+<pre class="code"><code># Service trust and credentials
+
+Date: 2026-11-04
+
+Status: accepted
+
+## Context
+Reconstructed from HTTPS Secret and TURN AuthHandler on 2026-11-04. DNS authentication is absent today.
+
+## Decision
+Record existing optional service credentials. Planned direct DNS transactions use TSIG.
+
+## Consequences
+Peers trust the configured service. DNS payloads remain visible without a separate encrypted transport.</code></pre><nav class="pager">
+<a href="page-audit.html">&larr; Repository audit and evidence</a>
+<a href="feature-foundation.html">Feature: Foundation gaps &rarr;</a>
+</nav>
+</main>
+</div>
+<script src="../assets/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'default'});</script>
+<script type="application/json" id="rv-embedded">[]</script>
+<script>
+(function(){
+  'use strict';
+  var PAGE = document.body.getAttribute('data-page');
+  // storage key carries the spec's slug: file:// pages can share one
+  // localStorage pool, and two specs must never share a comment store
+  var RVKEY = 'spec-review:' + (document.body.getAttribute('data-rvkey') || 'spec');
+  var EMBED = [];
+  var embedEl = document.getElementById('rv-embedded');
+  if (embedEl) { try { EMBED = JSON.parse(embedEl.textContent); } catch(e){} }
+  function loadLocal(){ try { return JSON.parse(localStorage.getItem(RVKEY)) || {comments:[], deleted:[]}; } catch(e){ return {comments:[], deleted:[]}; } }
+  function saveLocal(s){ try { localStorage.setItem(RVKEY, JSON.stringify(s)); } catch(e){} }
+  function cid(c){ return c.page + '|' + c.section + '|' + (c.date||'') + '|' + c.body.slice(0,24); }
+  function allComments(){
+    var s = loadLocal(), map = {};
+    EMBED.forEach(function(c){ map[cid(c)] = c; });
+    s.comments.forEach(function(c){ map[cid(c)] = c; });
+    s.deleted.forEach(function(id){ delete map[id]; });
+    return Object.keys(map).map(function(k){ return map[k]; });
+  }
+  function upsert(c){
+    var s = loadLocal(), id = cid(c);
+    s.comments = s.comments.filter(function(x){ return cid(x) !== id; });
+    s.comments.push(c);
+    s.deleted = s.deleted.filter(function(x){ return x !== id; });
+    saveLocal(s); refresh();
+  }
+  function remove(c){
+    var s = loadLocal(), id = cid(c);
+    s.comments = s.comments.filter(function(x){ return cid(x) !== id; });
+    if (EMBED.some(function(x){ return cid(x) === id; })) s.deleted.push(id);
+    saveLocal(s); refresh();
+  }
+  function today(){ return new Date().toISOString().slice(0,10); }
+  function exportMd(){
+    var lines = ['# Review comments', '',
+      '<!-- Exported from the spec review layer. Save this file as',
+      '     docs/specs/review-comments.md and re-run render-spec.py to embed',
+      '     every comment under its section for the next review round. -->', ''];
+    allComments().sort(function(a,b){
+      return (a.page+a.section).localeCompare(b.page+b.section);
+    }).forEach(function(c){
+      lines.push('## [' + c.page + '] ' + (c.section||''));
+      lines.push('status: ' + (c.status||'open'));
+      lines.push('date: ' + (c.date||today()));
+      lines.push(c.body); lines.push('');
+    });
+    var blob = new Blob([lines.join('\n')], {type:'text/markdown'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'review-comments.md';
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+  function importMd(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var text = String(reader.result);
+      var blocks = text.split(/^## /m).slice(1);
+      blocks.forEach(function(b){
+        var head = b.match(/^\[([^\]]+)\]\s*(\S*)/);
+        if (!head) return;
+        var status = (b.match(/^status:\s*(\S+)/m)||[])[1] || 'open';
+        var date = (b.match(/^date:\s*(\S+)/m)||[])[1] || today();
+        var body = b.replace(/^\[[^\]]*\]\s*\S*\s*\n/, '')
+                    .replace(/^status:.*\n?/m,'').replace(/^date:.*\n?/m,'').trim();
+        if (body) upsert({page:head[1], section:head[2]||'', status:status, date:date, body:body});
+      });
+      refresh();
+    };
+    reader.readAsText(file);
+  }
+  function commentBox(c){
+    var div = document.createElement('div');
+    div.className = 'rv-comment' + (c.status === 'resolved' ? ' rv-resolved' : '');
+    var head = document.createElement('div'); head.className = 'rv-head';
+    head.textContent = '💬 ' + (c.date||'') + ' · ' + (c.status||'open');
+    var tog = document.createElement('button');
+    tog.textContent = c.status === 'resolved' ? 'reopen' : 'resolve';
+    tog.onclick = function(){ remove(c); c = Object.assign({}, c, {status: c.status === 'resolved' ? 'open' : 'resolved'}); upsert(c); };
+    var del = document.createElement('button'); del.textContent = 'delete';
+    del.onclick = function(){ if (confirm('Delete this comment?')) remove(c); };
+    head.appendChild(tog); head.appendChild(del);
+    var body = document.createElement('div'); body.className = 'rv-body';
+    body.textContent = c.body;
+    div.appendChild(head); div.appendChild(body);
+    return div;
+  }
+  function editor(section, after){
+    var wrap = document.createElement('div');
+    wrap.className = 'rv-comment rv-editor';
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'Comment on this section…';
+    var actions = document.createElement('div'); actions.className = 'rv-actions';
+    var save = document.createElement('button'); save.textContent = 'Save';
+    save.onclick = function(){
+      if (ta.value.trim()) upsert({page:PAGE, section:section, status:'open', date:today(), body:ta.value.trim()});
+      wrap.remove();
+    };
+    var cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+    cancel.className = 'rv-cancel'; cancel.onclick = function(){ wrap.remove(); };
+    actions.appendChild(save); actions.appendChild(cancel);
+    wrap.appendChild(ta); wrap.appendChild(actions);
+    after.insertAdjacentElement('afterend', wrap);
+    ta.focus();
+  }
+  // --- headings, inline buttons ---
+  var mainH1 = document.querySelector('main h1');
+  if (mainH1 && !mainH1.id) { mainH1.id = 'page-title'; }
+  var headings = Array.prototype.slice.call(
+    document.querySelectorAll('main h1[id], main h2[id], main h3[id], main h4[id]'));
+  headings.forEach(function(h){
+    var b = document.createElement('button');
+    b.className = 'rv-add'; b.textContent = '💬 comment'; b.title = 'Comment on this section';
+    b.onclick = function(){ editor(h.id, h); };
+    h.appendChild(b);
+  });
+  function headingTitle(h){
+    var t = h.childNodes[0] ? h.childNodes[0].textContent : h.textContent;
+    return t.trim();
+  }
+  function titleFor(section){
+    var el = section && document.getElementById(section);
+    return el ? headingTitle(el) : (section || '(page)');
+  }
+
+  // --- drawer ---
+  var drawer = document.createElement('div');
+  drawer.id = 'rv-drawer';
+  drawer.innerHTML =
+    '<header><strong>Review</strong> <span class="rv-count"></span></header>' +
+    '<div class="rv-compose">' +
+    '<div class="rv-live">Commenting on the section in view:</div>' +
+    '<label for="rv-sec"></label><select id="rv-sec"></select>' +
+    '<textarea id="rv-text" placeholder="Type as you read… (Ctrl+Enter saves)"></textarea>' +
+    '<div style="margin-top:.4rem; display:flex; gap:.5rem;">' +
+    '<button class="rv-primary" id="rv-save">Save comment</button>' +
+    '<button id="rv-clear">Clear</button></div></div>' +
+    '<div class="rv-list"></div>' +
+    '<footer><button id="rv-export">Export .md</button>' +
+    '<button id="rv-import">Import</button>' +
+    '<span class="rv-otherpages"></span></footer>';
+  document.body.appendChild(drawer);
+  var toggle = document.createElement('button');
+  toggle.id = 'rv-toggle';
+  toggle.onclick = function(){
+    document.body.classList.toggle('rv-open');
+    try { localStorage.setItem(RVKEY + ':open', document.body.classList.contains('rv-open') ? '1' : ''); } catch(e){}
+  };
+  document.body.appendChild(toggle);
+  try { if (localStorage.getItem(RVKEY + ':open')) document.body.classList.add('rv-open'); } catch(e){}
+
+  var sel = drawer.querySelector('#rv-sec');
+  headings.forEach(function(h){
+    var opt = document.createElement('option');
+    opt.value = h.id; opt.textContent = headingTitle(h);
+    sel.appendChild(opt);
+  });
+  var followScroll = true;
+  sel.onchange = function(){ followScroll = false; };
+
+  // scroll spy: pick the last heading above the upper third of the viewport
+  function currentSection(){
+    var line = window.innerHeight * 0.33, best = headings[0];
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].getBoundingClientRect().top <= line) best = headings[i];
+    }
+    return best ? best.id : '';
+  }
+  window.addEventListener('scroll', function(){
+    if (!followScroll) return;
+    var s = currentSection();
+    if (s && sel.value !== s) sel.value = s;
+  }, {passive:true});
+  // typing pins the target section so a stray scroll can't retarget the comment
+  drawer.querySelector('#rv-text').addEventListener('input', function(){
+    if (this.value.trim()) followScroll = false;
+    else followScroll = true;
+  });
+
+  function saveFromDrawer(){
+    var ta = drawer.querySelector('#rv-text');
+    if (!ta.value.trim()) return;
+    upsert({page:PAGE, section:sel.value, status:'open', date:today(), body:ta.value.trim()});
+    ta.value = ''; followScroll = true;
+  }
+  drawer.querySelector('#rv-save').onclick = saveFromDrawer;
+  drawer.querySelector('#rv-text').addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') saveFromDrawer();
+  });
+  drawer.querySelector('#rv-clear').onclick = function(){
+    drawer.querySelector('#rv-text').value = ''; followScroll = true;
+  };
+  drawer.querySelector('#rv-export').onclick = exportMd;
+  var fileIn = document.createElement('input');
+  fileIn.type = 'file'; fileIn.accept = '.md,text/markdown'; fileIn.style.display = 'none';
+  fileIn.onchange = function(){ if (fileIn.files[0]) importMd(fileIn.files[0]); };
+  drawer.appendChild(fileIn);
+  drawer.querySelector('#rv-import').onclick = function(){ fileIn.click(); };
+
+  function drawerItem(c){
+    var div = document.createElement('div');
+    div.className = 'rv-item' + (c.status === 'resolved' ? ' rv-resolved' : '');
+    var where = document.createElement('div'); where.className = 'rv-where';
+    where.textContent = titleFor(c.section);
+    var text = document.createElement('div'); text.className = 'rv-text';
+    text.textContent = c.body;
+    var meta = document.createElement('div'); meta.className = 'rv-meta';
+    meta.textContent = (c.date||'') + ' · ' + (c.status||'open');
+    var tog = document.createElement('button');
+    tog.textContent = c.status === 'resolved' ? 'reopen' : 'resolve';
+    tog.onclick = function(e){ e.stopPropagation(); remove(c);
+      upsert(Object.assign({}, c, {status: c.status === 'resolved' ? 'open' : 'resolved'})); };
+    var del = document.createElement('button'); del.textContent = 'delete';
+    del.onclick = function(e){ e.stopPropagation();
+      if (confirm('Delete this comment?')) remove(c); };
+    meta.appendChild(tog); meta.appendChild(del);
+    div.appendChild(where); div.appendChild(text); div.appendChild(meta);
+    div.onclick = function(){
+      var el = c.section && document.getElementById(c.section);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+    };
+    return div;
+  }
+
+  function refresh(){
+    document.querySelectorAll('.rv-comment:not(.rv-editor)').forEach(function(el){ el.remove(); });
+    var all = allComments();
+    var mine = all.filter(function(c){ return c.page === PAGE; });
+    mine.forEach(function(c){
+      var target = c.section && document.getElementById(c.section);
+      var anchor = target || mainH1 || document.body.querySelector('main') || document.body;
+      anchor.insertAdjacentElement('afterend', commentBox(c));
+    });
+    var open = all.filter(function(c){ return c.status !== 'resolved'; }).length;
+    toggle.textContent = '💬 Review (' + open + ')';
+    drawer.querySelector('.rv-count').textContent =
+      open + ' open / ' + all.length + ' total';
+    var list = drawer.querySelector('.rv-list');
+    list.innerHTML = '';
+    mine.slice().reverse().forEach(function(c){ list.appendChild(drawerItem(c)); });
+    var others = {};
+    all.forEach(function(c){ if (c.page !== PAGE) others[c.page] = (others[c.page]||0) + 1; });
+    var otherKeys = Object.keys(others);
+    drawer.querySelector('.rv-otherpages').textContent = otherKeys.length
+      ? 'Other pages: ' + otherKeys.map(function(k){ return k + ' (' + others[k] + ')'; }).join(', ')
+      : '';
+  }
+  refresh();
+  var s0 = currentSection();
+  if (s0) sel.value = s0;
+})();
+</script>
+</body>
+</html>

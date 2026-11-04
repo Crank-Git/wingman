@@ -15,3 +15,7 @@ cover.out
 /.results/
 .vscode/
 .idea/
+
+# Issue-flow local state
+.worktrees/
+.issue-flow.local.json
