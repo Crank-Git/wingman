@@ -158,6 +158,65 @@ func (s *Session) DataChannel() (*webrtc.DataChannel, bool) {
 	return s.dataChan, true
 }
 
+// CandidatePairTypes contains the local and remote types of the selected pair.
+// Each type is host, srflx, prflx, relay, or unknown.
+type CandidatePairTypes struct {
+	Local  string
+	Remote string
+}
+
+// SelectedCandidatePair returns the selected pair types from Pion statistics.
+// The boolean is false when the connection or its candidate statistics are unavailable.
+// Concurrent Close can make the statistics unavailable.
+func (s *Session) SelectedCandidatePair() (CandidatePairTypes, bool) {
+	s.mu.Lock()
+	pc := s.pc
+	s.mu.Unlock()
+	// Pion methods can invoke callbacks that need the Session lock.
+	stats, ok := pc.(interface {
+		SCTP() *webrtc.SCTPTransport
+		GetStats() webrtc.StatsReport
+	})
+	if !ok {
+		return CandidatePairTypes{}, false
+	}
+	sctp := stats.SCTP()
+	if sctp == nil {
+		return CandidatePairTypes{}, false
+	}
+	dtls := sctp.Transport()
+	if dtls == nil {
+		return CandidatePairTypes{}, false
+	}
+	ice := dtls.ICETransport()
+	if ice == nil {
+		return CandidatePairTypes{}, false
+	}
+	pair, ok := ice.GetSelectedCandidatePairStats()
+	if !ok {
+		return CandidatePairTypes{}, false
+	}
+	return candidatePairTypes(pair, stats.GetStats())
+}
+
+func candidatePairTypes(pair webrtc.ICECandidatePairStats, report webrtc.StatsReport) (CandidatePairTypes, bool) {
+	local, localOK := report[pair.LocalCandidateID].(webrtc.ICECandidateStats)
+	remote, remoteOK := report[pair.RemoteCandidateID].(webrtc.ICECandidateStats)
+	if !localOK || !remoteOK {
+		return CandidatePairTypes{}, false
+	}
+	return CandidatePairTypes{Local: candidateType(local.CandidateType), Remote: candidateType(remote.CandidateType)}, true
+}
+
+func candidateType(value webrtc.ICECandidateType) string {
+	switch value {
+	case webrtc.ICECandidateTypeHost, webrtc.ICECandidateTypeSrflx, webrtc.ICECandidateTypePrflx, webrtc.ICECandidateTypeRelay:
+		return value.String()
+	default:
+		return "unknown"
+	}
+}
+
 // SendText sends a UTF-8 message over the data channel.
 func (s *Session) SendText(text string) error {
 	s.mu.Lock()
