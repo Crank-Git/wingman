@@ -5,6 +5,7 @@ package metrics
 
 import (
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -227,6 +228,37 @@ func (m *Metrics) Text() string {
 	}
 
 	return b.String()
+}
+
+// PrometheusContentType is the media type Prometheus expects for the text
+// exposition format. See the Prometheus documentation for the exact value.
+const PrometheusContentType = "text/plain; version=0.0.4; charset=utf-8"
+
+// Handler returns an http.Handler that renders the current metrics in the
+// Prometheus text exposition format at the /metrics path. It is safe for
+// concurrent use; each request takes a read lock via Snapshot.
+type metricsHandler struct {
+	m *Metrics
+}
+
+// MetricsHandler returns an http.Handler exposing m at /metrics. Non-GET
+// requests receive 405 so the endpoint cannot be used to mutate state.
+func (m *Metrics) MetricsHandler() http.Handler {
+	return metricsHandler{m: m}
+}
+
+func (h metricsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/metrics" {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", PrometheusContentType)
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write([]byte(h.m.Text()))
 }
 
 // sortedKeys returns the map keys in ascending order for stable output.

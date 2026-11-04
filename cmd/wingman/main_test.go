@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
@@ -130,6 +132,60 @@ func TestRunServeStartsAndStops(t *testing.T) {
 	}()
 	if err := runServe(ctx, nil); err != nil {
 		t.Fatalf("runServe: %v", err)
+	}
+}
+
+// TestRunServeServesMetrics starts the serve subcommand with --metrics-addr and
+// proves the /metrics endpoint responds with Prometheus output before the
+// command shuts down on ctx cancellation.
+func TestRunServeServesMetrics(t *testing.T) {
+	// Grab a free port, then reuse it for the metrics server.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := l.Addr().String()
+	_ = l.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		cancel()
+	}()
+
+	done := make(chan error, 1)
+	go func() { done <- runServe(ctx, []string{"--metrics-addr", addr}) }()
+
+	url := "http://" + addr + "/metrics"
+	var resp *http.Response
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		resp, err = http.Get(url)
+		if err == nil {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if resp == nil {
+		t.Fatal("metrics endpoint never came up")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /metrics status = %d, want 200", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "wingman_connections_attempted") {
+		t.Errorf("metrics body missing expected metric\n%s", body)
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("runServe: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runServe did not return after ctx cancel")
 	}
 }
 
@@ -722,7 +778,10 @@ func TestStartSessionSuccessMetrics(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	room := "metrics-success-room"
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if _, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
 			t.Errorf("connectAnswer: %v", err)
 		}
@@ -753,6 +812,10 @@ func TestStartSessionSuccessMetrics(t *testing.T) {
 	if m.HandshakeLatencyTotal() <= 0 {
 		t.Errorf("HandshakeLatencyTotal = %v, want > 0", m.HandshakeLatencyTotal())
 	}
+
+	// Wait for the answerer goroutine so it cannot call t.Errorf after the
+	// test returns (ctx is still live here, so the handshake completes).
+	wg.Wait()
 }
 
 // TestStartSessionFailureMetrics checks that a failed handshake records a

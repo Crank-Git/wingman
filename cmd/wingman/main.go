@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -112,6 +113,10 @@ offer/answer flags:
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
   --metrics               print connection metrics (Prometheus format) on exit
+
+serve flags:
+  --zone example.com      authoritative DNS zone this server serves
+  --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
 `)
 }
 
@@ -121,6 +126,7 @@ func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
+	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -130,7 +136,27 @@ func runServe(ctx context.Context, args []string) error {
 	}
 	defer srv.Stop()
 	fmt.Printf("wingman server listening on %s (zone %q)\n", srv.Addr(), *zone)
+
+	var metricsSrv *http.Server
+	if *metricsAddr != "" {
+		metricsSrv = &http.Server{
+			Addr:    *metricsAddr,
+			Handler: metrics.New().MetricsHandler(),
+		}
+		go func() {
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
+			}
+		}()
+		fmt.Printf("metrics listening on %s/metrics\n", *metricsAddr)
+	}
+
 	<-ctx.Done()
+	if metricsSrv != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = metricsSrv.Shutdown(shutdownCtx)
+	}
 	return nil
 }
 
