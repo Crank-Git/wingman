@@ -65,13 +65,20 @@ class Demo:
         for _, child, _ in self.children:
             if child.poll() is None:
                 # The Go build can own compiler processes in the same process group.
-                os.killpg(child.pid, signal.SIGTERM)
+                try:
+                    os.killpg(child.pid, signal.SIGTERM)
+                except ProcessLookupError:
+                    # A child can exit between the status check and the signal.
+                    pass
         deadline = time.monotonic() + 2
         for _, child, _ in self.children:
             try:
                 child.wait(timeout=max(.01, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
-                os.killpg(child.pid, signal.SIGKILL)
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
                 child.wait()
             if child.stdin:
                 try:
@@ -143,7 +150,7 @@ def main():
             for name, _, log in demo.children:
                 print(f'--- {name} ---')
                 print(log.read_text(), end='')
-        print('demo: both peers receive known text; temporary credentials and children are removed')
+    print('demo: both peers receive known text; temporary credentials and children are removed')
     return 0
 
 
