@@ -7,6 +7,35 @@ import (
 	"strings"
 )
 
+// ifaceAddr pairs a network interface with its assigned addresses. It exists so
+// the parsing in GatherHostCandidates can be exercised against a fixed set of
+// interfaces rather than the host's live network configuration.
+type ifaceAddr struct {
+	iface net.Interface
+	addrs []net.Addr
+}
+
+// enumerateInterfaces returns the local interfaces paired with their addresses.
+// It is a package variable so tests can substitute a fixed set and exercise the
+// parsing branches (down interfaces, unspecified addresses, both address types,
+// enumeration errors) deterministically instead of depending on the host's
+// actual network configuration.
+var enumerateInterfaces = func() ([]ifaceAddr, error) {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ifaceAddr, 0, len(ifaces))
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		out = append(out, ifaceAddr{iface: iface, addrs: addrs})
+	}
+	return out, nil
+}
+
 // GatherHostCandidates returns the host candidates available on the local
 // machine. A host candidate is a directly-assigned (network, address, port)
 // tuple; here we enumerate every usable IP address on every active interface for
@@ -59,44 +88,41 @@ func GatherHostCandidates(ctx context.Context, networks []string, localPreferenc
 		out = append(out, c)
 	}
 
-	if wantUDP {
-		out = append(out, gatherInterfaceAddresses("udp", add)...)
+	ifaces, err := enumerateInterfaces()
+	if err != nil {
+		return nil, err
 	}
-	if wantTCP {
-		out = append(out, gatherInterfaceAddresses("tcp", add)...)
+
+	for _, ia := range ifaces {
+		if ia.iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if wantUDP {
+			out = append(out, gatherInterfaceAddresses("udp", ia.addrs, add)...)
+		}
+		if wantTCP {
+			out = append(out, gatherInterfaceAddresses("tcp", ia.addrs, add)...)
+		}
 	}
 
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Key() < out[j].Key() })
 	return out, nil
 }
 
-// gatherInterfaceAddresses returns host candidates of network across all active
-// interfaces, parsing each interface address for its IP.
-func gatherInterfaceAddresses(network string, add func(string, net.IP)) []Candidate {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil
-	}
+// gatherInterfaceAddresses parses each address on one interface for its IP and
+// hands the usable host addresses to add.
+func gatherInterfaceAddresses(network string, addrs []net.Addr, add func(string, net.IP)) []Candidate {
 	var out []Candidate
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue
+	for _, a := range addrs {
+		var ip net.IP
+		switch v := a.(type) {
+		case *net.IPAddr:
+			ip = v.IP
+		case *net.IPNet:
+			ip = v.IP
 		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			var ip net.IP
-			switch v := a.(type) {
-			case *net.IPAddr:
-				ip = v.IP
-			case *net.IPNet:
-				ip = v.IP
-			}
-			if ip != nil {
-				add(network, ip)
-			}
+		if ip != nil {
+			add(network, ip)
 		}
 	}
 	return out

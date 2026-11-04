@@ -2,6 +2,7 @@ package sig
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 )
 
@@ -111,6 +112,34 @@ func TestReassembleGap(t *testing.T) {
 	}
 	if _, err := Reassemble(kept); err == nil {
 		t.Fatal("expected gap error, got nil")
+	}
+}
+
+// TestReassembleIncompleteTail covers the transient state where only a
+// contiguous prefix of fragments has arrived: the final fragment (which carries
+// the CRC32 trailer) is missing, so reassembly must report incompleteness
+// rather than misreading trailing payload as a CRC.
+func TestReassembleIncompleteTail(t *testing.T) {
+	msg := []byte("0123456789")
+	frags, err := Fragments(msg, 2) // 5 fragments, seq 0..4, total 5
+	if err != nil {
+		t.Fatalf("Fragments: %v", err)
+	}
+	// Drop the final fragment to simulate an in-flight publish or a truncated
+	// response that dropped the highest sequence number.
+	kept := make([]Fragment, 0, len(frags)-1)
+	for _, f := range frags {
+		if f.Seq == 4 {
+			continue
+		}
+		kept = append(kept, f)
+	}
+	got, err := Reassemble(kept)
+	if errors.Is(err, ErrIncomplete) {
+		return
+	}
+	if got != nil || err == nil {
+		t.Fatalf("expected ErrIncomplete, got (%v, %v)", got, err)
 	}
 }
 

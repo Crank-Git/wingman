@@ -2,6 +2,7 @@ package ice
 
 import (
 	"context"
+	"errors"
 	"net"
 	"testing"
 )
@@ -82,5 +83,72 @@ func TestGatherHostCandidatesContextCanceled(t *testing.T) {
 	cancel()
 	if _, err := GatherHostCandidates(ctx, nil, 65535); err == nil {
 		t.Fatal("expected context-cancellation error")
+	}
+}
+
+// TestGatherHostCandidatesDeterministic substitutes a fixed set of interfaces
+// so the parsing branches that depend on the host's live network configuration
+// are exercised on every machine and CI runner: a down interface (skipped), an
+// unspecified 0.0.0.0 address (skipped), and both *net.IPNet and *net.IPAddr
+// address types (parsed).
+func TestGatherHostCandidatesDeterministic(t *testing.T) {
+	orig := enumerateInterfaces
+	defer func() { enumerateInterfaces = orig }()
+
+	down := net.Interface{Name: "down0", Flags: 0} // FlagUp not set -> skipped
+	lo := net.Interface{Name: "lo", Flags: net.FlagUp | net.FlagLoopback}
+	eth := net.Interface{Name: "eth0", Flags: net.FlagUp}
+	dummy := net.Interface{Name: "dummy0", Flags: net.FlagUp}
+
+	// 127.0.0.1 arrives as an *net.IPNet; 192.168.1.9 as an *net.IPAddr, so both
+	// type-switch cases are covered. 0.0.0.0 must be skipped as unspecified.
+	enumerateInterfaces = func() ([]ifaceAddr, error) {
+		return []ifaceAddr{
+			{iface: down, addrs: []net.Addr{&net.IPNet{IP: net.ParseIP("10.0.0.5"), Mask: net.CIDRMask(24, 32)}}},
+			{iface: lo, addrs: []net.Addr{&net.IPNet{IP: net.ParseIP("127.0.0.1"), Mask: net.CIDRMask(8, 32)}}},
+			{iface: eth, addrs: []net.Addr{&net.IPAddr{IP: net.ParseIP("192.168.1.9")}}},
+			{iface: dummy, addrs: []net.Addr{&net.IPNet{IP: net.ParseIP("0.0.0.0"), Mask: net.CIDRMask(0, 32)}}},
+		}, nil
+	}
+
+	cands, err := GatherHostCandidates(context.Background(), nil, 100)
+	if err != nil {
+		t.Fatalf("GatherHostCandidates: %v", err)
+	}
+
+	addrs := map[string]bool{}
+	for _, c := range cands {
+		addrs[c.Address] = true
+	}
+
+	// The down interface's 10.0.0.5 and the unspecified 0.0.0.0 must not appear.
+	if addrs["10.0.0.5"] {
+		t.Errorf("down-interface candidate 10.0.0.5 should have been skipped")
+	}
+	if addrs["0.0.0.0"] {
+		t.Errorf("unspecified 0.0.0.0 should have been skipped")
+	}
+	// The loopback (IPNet) and ethernet (IPAddr) candidates must both appear,
+	// proving both address-type branches were parsed.
+	if !addrs["127.0.0.1"] {
+		t.Error("missing loopback 127.0.0.1 candidate (IPNet branch)")
+	}
+	if !addrs["192.168.1.9"] {
+		t.Error("missing 192.168.1.9 candidate (IPAddr branch)")
+	}
+}
+
+// TestGatherHostCandidatesEnumerateError checks that a failure enumerating the
+// interfaces is surfaced rather than swallowed.
+func TestGatherHostCandidatesEnumerateError(t *testing.T) {
+	orig := enumerateInterfaces
+	defer func() { enumerateInterfaces = orig }()
+
+	enumerateInterfaces = func() ([]ifaceAddr, error) {
+		return nil, errors.New("enumerate boom")
+	}
+
+	if _, err := GatherHostCandidates(context.Background(), nil, 100); err == nil {
+		t.Fatal("expected enumerateInterfaces error to surface")
 	}
 }

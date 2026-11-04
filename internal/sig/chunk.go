@@ -108,6 +108,15 @@ func Reassemble(frags []Fragment) ([]byte, error) {
 		}
 	}
 
+	// The final fragment (seq == total-1) carries the CRC32 trailer. If only a
+	// contiguous prefix has arrived -- e.g. the publisher is still writing or a
+	// response was truncated to drop the highest sequence numbers -- there is no
+	// trailer yet. Report incompleteness so the caller keeps polling rather than
+	// misreading trailing payload bytes as a CRC.
+	if sorted[len(sorted)-1].Seq != total-1 {
+		return nil, ErrIncomplete
+	}
+
 	var buf bytes.Buffer
 	for _, f := range sorted {
 		buf.Write(f.Data)
