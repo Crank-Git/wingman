@@ -40,6 +40,8 @@ const defaultHandlerTTL = 30 * time.Second
 // route is the single signaling endpoint both peers share.
 const route = "/signaling"
 
+const maxMessageBytes = 16 * 1024
+
 // Transport is a sig.Transport that publishes and polls SDP over HTTPS. It is
 // safe for concurrent use.
 type Transport struct {
@@ -253,9 +255,10 @@ type entry struct {
 // Handler is an http.Handler that stores one SDP message per (room, kind) and
 // serves it over HTTPS. It is safe for concurrent use.
 //
-// Two mechanisms bound memory: a served message is deleted on read (SDP is
-// one-shot), and unserved messages older than TTL are swept on access so rooms
-// that never complete a handshake cannot grow the map without bound.
+// POST accepts at most 16 KiB per message. Larger bodies return 413 without storage.
+// GET consumes a stored message. Authorized access sweeps messages older than TTL.
+// Rooms are case-sensitive single labels of 1 to 63 bytes without dots,
+// backslash escapes, or surrounding whitespace. Underscores and edge hyphens are valid.
 type Handler struct {
 	mu   sync.Mutex
 	msgs map[string]entry
@@ -298,11 +301,20 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	// Reject unauthorized requests before they read bodies or change retained entries.
+	if h.Secret != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get(secretHeader)), []byte(h.Secret)) != 1 {
+		http.Error(w, "https: unauthorized", http.StatusUnauthorized)
+		return
+	}
 	q := r.URL.Query()
 	room := q.Get("room")
 	kind := q.Get("kind")
 	if room == "" || kind == "" {
 		http.Error(w, "https: room and kind query params are required", http.StatusBadRequest)
+		return
+	}
+	if len(room) > 63 || strings.ContainsAny(room, ".\\") || strings.TrimSpace(room) != room {
+		http.Error(w, "https: invalid room", http.StatusBadRequest)
 		return
 	}
 	if _, err := sig.ParseKind(kind); err != nil {
@@ -312,19 +324,15 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Bound memory: drop any entries that have outlived the TTL.
 	h.sweep(time.Now())
 
-	// Authenticate the channel when a secret is configured. The constant-time
-	// comparison avoids leaking the secret via timing.
-	if h.Secret != "" {
-		if subtle.ConstantTimeCompare([]byte(r.Header.Get(secretHeader)), []byte(h.Secret)) != 1 {
-			http.Error(w, "https: unauthorized", http.StatusUnauthorized)
-			return
-		}
-	}
 	key := room + "/" + kind
 
 	switch r.Method {
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(io.LimitReader(r.Body, maxMessageBytes+1))
+		if len(body) > maxMessageBytes {
+			http.Error(w, "https: message too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		if err != nil {
 			http.Error(w, "https: read body", http.StatusBadRequest)
 			return
@@ -352,6 +360,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.mu.Unlock()
 
 	default:
+		w.Header().Set("Allow", "GET, POST")
 		http.Error(w, "https: method not allowed", http.StatusMethodNotAllowed)
 	}
 }
