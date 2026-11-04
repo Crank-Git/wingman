@@ -2,8 +2,8 @@
 id: https-repairs
 feature: HTTPS safety and atomic consumption
 epic: Epic 2: HTTPS repairs
-status: planned
-issues: []
+status: issued
+issues: [22, 23, 24, 25, 26]
 mockups: [mockups/07-https-repairs.html]
 ---
 

@@ -2,8 +2,8 @@
 id: dynupdate
 feature: RFC 2136 DynUpdate transport
 epic: Epic 5: DynUpdate
-status: planned
-issues: []
+status: issued
+issues: [40, 41, 42, 43, 44, 45]
 mockups: [mockups/10-dynupdate.html]
 ---
 

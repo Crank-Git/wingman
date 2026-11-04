@@ -2,8 +2,8 @@
 id: dns-repairs
 feature: DNS isolation and resource limits
 epic: Epic 1: DNS repairs
-status: planned
-issues: []
+status: issued
+issues: [16, 17, 18, 19, 20, 21]
 mockups: [mockups/06-dns-repairs.html]
 ---
 

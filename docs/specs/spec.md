@@ -113,18 +113,18 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 ## Feature map
 | Feature | Record | State | Epic |
 |---|---|---|---|
-| Foundation gaps | [foundation](features/00-foundation.md) | planned | Epic 0: Foundation |
+| Foundation gaps | [foundation](features/00-foundation.md) | issued | Epic 0: Foundation |
 | Signal framing and names | [framing](features/01-framing.md) | built | Existing behavior |
 | DNS query transport | [dns-existing](features/02-dns-existing.md) | built | Existing behavior |
 | Peer handshake and chat | [peer-existing](features/03-peer-existing.md) | built | Existing behavior |
 | HTTPS fallback transport | [https-existing](features/04-https-existing.md) | built | Existing behavior |
 | TURN and metrics | [ops-existing](features/05-ops-existing.md) | built | Existing behavior |
-| DNS isolation and resource limits | [dns-repairs](features/06-dns-repairs.md) | planned | Epic 1: DNS repairs |
-| HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | planned | Epic 2: HTTPS repairs |
-| Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | planned | Epic 3: Peer repairs |
-| Deployable servers and authentication | [server-operations](features/09-server-operations.md) | planned | Epic 4: Server operations |
-| RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | planned | Epic 5: DynUpdate |
-| Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | planned | Epic 6: Diagnostics |
+| DNS isolation and resource limits | [dns-repairs](features/06-dns-repairs.md) | issued | Epic 1: DNS repairs |
+| HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | issued | Epic 2: HTTPS repairs |
+| Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | issued | Epic 3: Peer repairs |
+| Deployable servers and authentication | [server-operations](features/09-server-operations.md) | issued | Epic 4: Server operations |
+| RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | issued | Epic 5: DynUpdate |
+| Diagnostics and network verification | [diagnostics](features/11-diagnostics.md) | issued | Epic 6: Diagnostics |
 
 Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.
 
@@ -319,3 +319,73 @@ Every milestone leaves tests green. The operator approves each promotion from de
 ## Changelog
 - 2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
 - 2026-11-04: The operator approves the spec and scaffold. Apply the reviewed files and retain the known defects as planned work.
+
+## Issue map
+
+GitHub issues cover the seven planned feature sets. The five built feature sets create no issues.
+
+| Epic | Feature | Epic issue | Sub-issues |
+|---|---|---|---|
+| Epic 0: Foundation | foundation | [#10](https://github.com/Crank-Git/wingman/issues/10) | [#11](https://github.com/Crank-Git/wingman/issues/11), [#12](https://github.com/Crank-Git/wingman/issues/12), [#13](https://github.com/Crank-Git/wingman/issues/13), [#14](https://github.com/Crank-Git/wingman/issues/14), [#15](https://github.com/Crank-Git/wingman/issues/15) |
+| Epic 1: DNS repairs | dns-repairs | [#16](https://github.com/Crank-Git/wingman/issues/16) | [#17](https://github.com/Crank-Git/wingman/issues/17), [#18](https://github.com/Crank-Git/wingman/issues/18), [#19](https://github.com/Crank-Git/wingman/issues/19), [#20](https://github.com/Crank-Git/wingman/issues/20), [#21](https://github.com/Crank-Git/wingman/issues/21) |
+| Epic 2: HTTPS repairs | https-repairs | [#22](https://github.com/Crank-Git/wingman/issues/22) | [#23](https://github.com/Crank-Git/wingman/issues/23), [#24](https://github.com/Crank-Git/wingman/issues/24), [#25](https://github.com/Crank-Git/wingman/issues/25), [#26](https://github.com/Crank-Git/wingman/issues/26) |
+| Epic 3: Peer repairs | peer-repairs | [#27](https://github.com/Crank-Git/wingman/issues/27) | [#28](https://github.com/Crank-Git/wingman/issues/28), [#29](https://github.com/Crank-Git/wingman/issues/29), [#30](https://github.com/Crank-Git/wingman/issues/30), [#31](https://github.com/Crank-Git/wingman/issues/31), [#32](https://github.com/Crank-Git/wingman/issues/32) |
+| Epic 4: Server operations | server-operations | [#33](https://github.com/Crank-Git/wingman/issues/33) | [#34](https://github.com/Crank-Git/wingman/issues/34), [#35](https://github.com/Crank-Git/wingman/issues/35), [#36](https://github.com/Crank-Git/wingman/issues/36), [#37](https://github.com/Crank-Git/wingman/issues/37), [#38](https://github.com/Crank-Git/wingman/issues/38), [#39](https://github.com/Crank-Git/wingman/issues/39) |
+| Epic 5: DynUpdate | dynupdate | [#40](https://github.com/Crank-Git/wingman/issues/40) | [#41](https://github.com/Crank-Git/wingman/issues/41), [#42](https://github.com/Crank-Git/wingman/issues/42), [#43](https://github.com/Crank-Git/wingman/issues/43), [#44](https://github.com/Crank-Git/wingman/issues/44), [#45](https://github.com/Crank-Git/wingman/issues/45) |
+| Epic 6: Diagnostics | diagnostics | [#46](https://github.com/Crank-Git/wingman/issues/46) | [#47](https://github.com/Crank-Git/wingman/issues/47), [#48](https://github.com/Crank-Git/wingman/issues/48), [#49](https://github.com/Crank-Git/wingman/issues/49), [#50](https://github.com/Crank-Git/wingman/issues/50), [#51](https://github.com/Crank-Git/wingman/issues/51) |
+
+### Requirement coverage
+
+| Requirement | Sub-issues |
+|---|---|
+| FR-foundation-1 | [#14](https://github.com/Crank-Git/wingman/issues/14) |
+| FR-foundation-2 | [#13](https://github.com/Crank-Git/wingman/issues/13) |
+| FR-foundation-3 | [#13](https://github.com/Crank-Git/wingman/issues/13) |
+| FR-foundation-4 | [#12](https://github.com/Crank-Git/wingman/issues/12) |
+| FR-foundation-5 | [#15](https://github.com/Crank-Git/wingman/issues/15) |
+| FR-foundation-6 | [#11](https://github.com/Crank-Git/wingman/issues/11) |
+| FR-dns-repairs-1 | [#17](https://github.com/Crank-Git/wingman/issues/17) |
+| FR-dns-repairs-2 | [#17](https://github.com/Crank-Git/wingman/issues/17) |
+| FR-dns-repairs-3 | [#18](https://github.com/Crank-Git/wingman/issues/18) |
+| FR-dns-repairs-4 | [#19](https://github.com/Crank-Git/wingman/issues/19) |
+| FR-dns-repairs-5 | [#20](https://github.com/Crank-Git/wingman/issues/20) |
+| FR-dns-repairs-6 | [#21](https://github.com/Crank-Git/wingman/issues/21) |
+| FR-https-repairs-1 | [#23](https://github.com/Crank-Git/wingman/issues/23) |
+| FR-https-repairs-2 | [#24](https://github.com/Crank-Git/wingman/issues/24) |
+| FR-https-repairs-3 | [#25](https://github.com/Crank-Git/wingman/issues/25) |
+| FR-https-repairs-4 | [#26](https://github.com/Crank-Git/wingman/issues/26) |
+| FR-https-repairs-5 | [#23](https://github.com/Crank-Git/wingman/issues/23) |
+| FR-peer-repairs-1 | [#28](https://github.com/Crank-Git/wingman/issues/28) |
+| FR-peer-repairs-2 | [#28](https://github.com/Crank-Git/wingman/issues/28) |
+| FR-peer-repairs-3 | [#29](https://github.com/Crank-Git/wingman/issues/29), [#32](https://github.com/Crank-Git/wingman/issues/32) |
+| FR-peer-repairs-4 | [#30](https://github.com/Crank-Git/wingman/issues/30) |
+| FR-peer-repairs-5 | [#30](https://github.com/Crank-Git/wingman/issues/30) |
+| FR-peer-repairs-6 | [#31](https://github.com/Crank-Git/wingman/issues/31) |
+| FR-server-operations-1 | [#34](https://github.com/Crank-Git/wingman/issues/34), [#37](https://github.com/Crank-Git/wingman/issues/37) |
+| FR-server-operations-2 | [#34](https://github.com/Crank-Git/wingman/issues/34) |
+| FR-server-operations-3 | [#35](https://github.com/Crank-Git/wingman/issues/35) |
+| FR-server-operations-4 | [#36](https://github.com/Crank-Git/wingman/issues/36), [#37](https://github.com/Crank-Git/wingman/issues/37) |
+| FR-server-operations-5 | [#38](https://github.com/Crank-Git/wingman/issues/38) |
+| FR-server-operations-6 | [#39](https://github.com/Crank-Git/wingman/issues/39) |
+| FR-dynupdate-1 | [#41](https://github.com/Crank-Git/wingman/issues/41) |
+| FR-dynupdate-2 | [#42](https://github.com/Crank-Git/wingman/issues/42) |
+| FR-dynupdate-3 | [#43](https://github.com/Crank-Git/wingman/issues/43) |
+| FR-dynupdate-4 | [#41](https://github.com/Crank-Git/wingman/issues/41) |
+| FR-dynupdate-5 | [#44](https://github.com/Crank-Git/wingman/issues/44) |
+| FR-dynupdate-6 | [#45](https://github.com/Crank-Git/wingman/issues/45) |
+| FR-diagnostics-1 | [#47](https://github.com/Crank-Git/wingman/issues/47), [#48](https://github.com/Crank-Git/wingman/issues/48) |
+| FR-diagnostics-2 | [#49](https://github.com/Crank-Git/wingman/issues/49) |
+| FR-diagnostics-3 | [#50](https://github.com/Crank-Git/wingman/issues/50) |
+| FR-diagnostics-4 | [#51](https://github.com/Crank-Git/wingman/issues/51) |
+| FR-diagnostics-5 | [#51](https://github.com/Crank-Git/wingman/issues/51) |
+
+### Dependencies
+
+- [#16](https://github.com/Crank-Git/wingman/issues/16) depends on [#10](https://github.com/Crank-Git/wingman/issues/10).
+- [#22](https://github.com/Crank-Git/wingman/issues/22) depends on [#10](https://github.com/Crank-Git/wingman/issues/10).
+- [#27](https://github.com/Crank-Git/wingman/issues/27) depends on [#10](https://github.com/Crank-Git/wingman/issues/10).
+- [#33](https://github.com/Crank-Git/wingman/issues/33) depends on [#16](https://github.com/Crank-Git/wingman/issues/16), [#22](https://github.com/Crank-Git/wingman/issues/22), [#27](https://github.com/Crank-Git/wingman/issues/27).
+- [#40](https://github.com/Crank-Git/wingman/issues/40) depends on [#33](https://github.com/Crank-Git/wingman/issues/33).
+- [#46](https://github.com/Crank-Git/wingman/issues/46) depends on [#40](https://github.com/Crank-Git/wingman/issues/40).
+
+Sub-issue bodies record dependencies within each epic. GitHub records each child as a native sub-issue.

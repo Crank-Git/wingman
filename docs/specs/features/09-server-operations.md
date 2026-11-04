@@ -2,8 +2,8 @@
 id: server-operations
 feature: Deployable servers and authentication
 epic: Epic 4: Server operations
-status: planned
-issues: []
+status: issued
+issues: [33, 34, 35, 36, 37, 38, 39]
 mockups: [mockups/09-server-operations.html]
 ---
 

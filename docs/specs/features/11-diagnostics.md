@@ -2,8 +2,8 @@
 id: diagnostics
 feature: Diagnostics and network verification
 epic: Epic 6: Diagnostics
-status: planned
-issues: []
+status: issued
+issues: [46, 47, 48, 49, 50, 51]
 mockups: [mockups/11-diagnostics.html]
 ---
 

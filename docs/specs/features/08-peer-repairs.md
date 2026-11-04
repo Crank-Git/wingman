@@ -2,8 +2,8 @@
 id: peer-repairs
 feature: Peer lifecycle and metric correctness
 epic: Epic 3: Peer repairs
-status: planned
-issues: []
+status: issued
+issues: [27, 28, 29, 30, 31, 32]
 mockups: [mockups/08-peer-repairs.html]
 ---
 

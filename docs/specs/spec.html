@@ -153,6 +153,7 @@ body.rv-open .layout { padding-right:21rem; }
 <li><a class="sub" href="#assumptions">Assumptions</a></li>
 <li><a class="sub" href="#risks-open-questions">Risks &amp; open questions</a></li>
 <li><a class="sub" href="#changelog">Changelog</a></li>
+<li><a class="sub" href="#issue-map">Issue map</a></li>
 </ul>
 <h2>Pages</h2><ul>
 <li><a href="html/page-audit.html">Repository audit and evidence</a></li>
@@ -254,18 +255,18 @@ body.rv-open .layout { padding-right:21rem; }
 <h2 id="feature-map">Feature map</h2>
 <div class="table-wrap"><table>
 <tr><th>Feature</th><th>Record</th><th>State</th><th>Epic</th></tr>
-<tr><td>Foundation gaps</td><td><a href="html/feature-foundation.html">foundation</a></td><td>planned</td><td>Epic 0: Foundation</td></tr>
+<tr><td>Foundation gaps</td><td><a href="html/feature-foundation.html">foundation</a></td><td>issued</td><td>Epic 0: Foundation</td></tr>
 <tr><td>Signal framing and names</td><td><a href="html/feature-framing.html">framing</a></td><td>built</td><td>Existing behavior</td></tr>
 <tr><td>DNS query transport</td><td><a href="html/feature-dns-existing.html">dns-existing</a></td><td>built</td><td>Existing behavior</td></tr>
 <tr><td>Peer handshake and chat</td><td><a href="html/feature-peer-existing.html">peer-existing</a></td><td>built</td><td>Existing behavior</td></tr>
 <tr><td>HTTPS fallback transport</td><td><a href="html/feature-https-existing.html">https-existing</a></td><td>built</td><td>Existing behavior</td></tr>
 <tr><td>TURN and metrics</td><td><a href="html/feature-ops-existing.html">ops-existing</a></td><td>built</td><td>Existing behavior</td></tr>
-<tr><td>DNS isolation and resource limits</td><td><a href="html/feature-dns-repairs.html">dns-repairs</a></td><td>planned</td><td>Epic 1: DNS repairs</td></tr>
-<tr><td>HTTPS safety and atomic consumption</td><td><a href="html/feature-https-repairs.html">https-repairs</a></td><td>planned</td><td>Epic 2: HTTPS repairs</td></tr>
-<tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>planned</td><td>Epic 3: Peer repairs</td></tr>
-<tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>planned</td><td>Epic 4: Server operations</td></tr>
-<tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>planned</td><td>Epic 5: DynUpdate</td></tr>
-<tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>planned</td><td>Epic 6: Diagnostics</td></tr>
+<tr><td>DNS isolation and resource limits</td><td><a href="html/feature-dns-repairs.html">dns-repairs</a></td><td>issued</td><td>Epic 1: DNS repairs</td></tr>
+<tr><td>HTTPS safety and atomic consumption</td><td><a href="html/feature-https-repairs.html">https-repairs</a></td><td>issued</td><td>Epic 2: HTTPS repairs</td></tr>
+<tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>issued</td><td>Epic 3: Peer repairs</td></tr>
+<tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>issued</td><td>Epic 4: Server operations</td></tr>
+<tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>issued</td><td>Epic 5: DynUpdate</td></tr>
+<tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>issued</td><td>Epic 6: Diagnostics</td></tr>
 </table></div>
 <p>Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.</p>
 <h2 id="architecture-stack">Architecture &amp; stack</h2>
@@ -457,7 +458,79 @@ body.rv-open .layout { padding-right:21rem; }
 </li>
 <li>2026-11-04: The operator approves the spec and scaffold. Apply the reviewed files and retain the known defects as planned work.
 </li>
-</ul><nav class="pager">
+</ul>
+<h2 id="issue-map">Issue map</h2>
+<p>GitHub issues cover the seven planned feature sets. The five built feature sets create no issues.</p>
+<div class="table-wrap"><table>
+<tr><th>Epic</th><th>Feature</th><th>Epic issue</th><th>Sub-issues</th></tr>
+<tr><td>Epic 0: Foundation</td><td>foundation</td><td><a href="https://github.com/Crank-Git/wingman/issues/10">#10</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/11">#11</a>, <a href="https://github.com/Crank-Git/wingman/issues/12">#12</a>, <a href="https://github.com/Crank-Git/wingman/issues/13">#13</a>, <a href="https://github.com/Crank-Git/wingman/issues/14">#14</a>, <a href="https://github.com/Crank-Git/wingman/issues/15">#15</a></td></tr>
+<tr><td>Epic 1: DNS repairs</td><td>dns-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a>, <a href="https://github.com/Crank-Git/wingman/issues/18">#18</a>, <a href="https://github.com/Crank-Git/wingman/issues/19">#19</a>, <a href="https://github.com/Crank-Git/wingman/issues/20">#20</a>, <a href="https://github.com/Crank-Git/wingman/issues/21">#21</a></td></tr>
+<tr><td>Epic 2: HTTPS repairs</td><td>https-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/22">#22</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a>, <a href="https://github.com/Crank-Git/wingman/issues/24">#24</a>, <a href="https://github.com/Crank-Git/wingman/issues/25">#25</a>, <a href="https://github.com/Crank-Git/wingman/issues/26">#26</a></td></tr>
+<tr><td>Epic 3: Peer repairs</td><td>peer-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a>, <a href="https://github.com/Crank-Git/wingman/issues/29">#29</a>, <a href="https://github.com/Crank-Git/wingman/issues/30">#30</a>, <a href="https://github.com/Crank-Git/wingman/issues/31">#31</a>, <a href="https://github.com/Crank-Git/wingman/issues/32">#32</a></td></tr>
+<tr><td>Epic 4: Server operations</td><td>server-operations</td><td><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a>, <a href="https://github.com/Crank-Git/wingman/issues/35">#35</a>, <a href="https://github.com/Crank-Git/wingman/issues/36">#36</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a>, <a href="https://github.com/Crank-Git/wingman/issues/38">#38</a>, <a href="https://github.com/Crank-Git/wingman/issues/39">#39</a></td></tr>
+<tr><td>Epic 5: DynUpdate</td><td>dynupdate</td><td><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a>, <a href="https://github.com/Crank-Git/wingman/issues/42">#42</a>, <a href="https://github.com/Crank-Git/wingman/issues/43">#43</a>, <a href="https://github.com/Crank-Git/wingman/issues/44">#44</a>, <a href="https://github.com/Crank-Git/wingman/issues/45">#45</a></td></tr>
+<tr><td>Epic 6: Diagnostics</td><td>diagnostics</td><td><a href="https://github.com/Crank-Git/wingman/issues/46">#46</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/47">#47</a>, <a href="https://github.com/Crank-Git/wingman/issues/48">#48</a>, <a href="https://github.com/Crank-Git/wingman/issues/49">#49</a>, <a href="https://github.com/Crank-Git/wingman/issues/50">#50</a>, <a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+</table></div>
+<h3 id="requirement-coverage">Requirement coverage</h3>
+<div class="table-wrap"><table>
+<tr><th>Requirement</th><th>Sub-issues</th></tr>
+<tr><td>FR-foundation-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/14">#14</a></td></tr>
+<tr><td>FR-foundation-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/13">#13</a></td></tr>
+<tr><td>FR-foundation-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/13">#13</a></td></tr>
+<tr><td>FR-foundation-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/12">#12</a></td></tr>
+<tr><td>FR-foundation-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/15">#15</a></td></tr>
+<tr><td>FR-foundation-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/11">#11</a></td></tr>
+<tr><td>FR-dns-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a></td></tr>
+<tr><td>FR-dns-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a></td></tr>
+<tr><td>FR-dns-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/18">#18</a></td></tr>
+<tr><td>FR-dns-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/19">#19</a></td></tr>
+<tr><td>FR-dns-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/20">#20</a></td></tr>
+<tr><td>FR-dns-repairs-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/21">#21</a></td></tr>
+<tr><td>FR-https-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a></td></tr>
+<tr><td>FR-https-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/24">#24</a></td></tr>
+<tr><td>FR-https-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/25">#25</a></td></tr>
+<tr><td>FR-https-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/26">#26</a></td></tr>
+<tr><td>FR-https-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a></td></tr>
+<tr><td>FR-peer-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a></td></tr>
+<tr><td>FR-peer-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a></td></tr>
+<tr><td>FR-peer-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/29">#29</a>, <a href="https://github.com/Crank-Git/wingman/issues/32">#32</a></td></tr>
+<tr><td>FR-peer-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/30">#30</a></td></tr>
+<tr><td>FR-peer-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/30">#30</a></td></tr>
+<tr><td>FR-peer-repairs-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/31">#31</a></td></tr>
+<tr><td>FR-server-operations-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a></td></tr>
+<tr><td>FR-server-operations-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a></td></tr>
+<tr><td>FR-server-operations-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/35">#35</a></td></tr>
+<tr><td>FR-server-operations-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/36">#36</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a></td></tr>
+<tr><td>FR-server-operations-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/38">#38</a></td></tr>
+<tr><td>FR-server-operations-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/39">#39</a></td></tr>
+<tr><td>FR-dynupdate-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a></td></tr>
+<tr><td>FR-dynupdate-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/42">#42</a></td></tr>
+<tr><td>FR-dynupdate-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/43">#43</a></td></tr>
+<tr><td>FR-dynupdate-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a></td></tr>
+<tr><td>FR-dynupdate-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/44">#44</a></td></tr>
+<tr><td>FR-dynupdate-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/45">#45</a></td></tr>
+<tr><td>FR-diagnostics-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/47">#47</a>, <a href="https://github.com/Crank-Git/wingman/issues/48">#48</a></td></tr>
+<tr><td>FR-diagnostics-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/49">#49</a></td></tr>
+<tr><td>FR-diagnostics-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/50">#50</a></td></tr>
+<tr><td>FR-diagnostics-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+<tr><td>FR-diagnostics-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+</table></div>
+<h3 id="dependencies">Dependencies</h3>
+<ul>
+<li><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/22">#22</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/16">#16</a>, <a href="https://github.com/Crank-Git/wingman/issues/22">#22</a>, <a href="https://github.com/Crank-Git/wingman/issues/27">#27</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/33">#33</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/46">#46</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/40">#40</a>.
+</li>
+</ul>
+<p>Sub-issue bodies record dependencies within each epic. GitHub records each child as a native sub-issue.</p><nav class="pager">
 <span></span>
 <a href="html/page-audit.html">Repository audit and evidence &rarr;</a>
 </nav>
