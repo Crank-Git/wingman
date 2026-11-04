@@ -22,6 +22,7 @@ import (
 // are stored; poll queries (the room poll name) return the stored fragments as
 // TXT records. It is safe for concurrent use.
 type Server struct {
+	TSIGKey       *TSIGKey   // Set before Start or requests.
 	mu            sync.Mutex // mu guards entries, fragments, and byte counts.
 	frags         map[storageKey]*fragmentEntry
 	retainedBytes int
@@ -88,13 +89,18 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.stop != nil {
 		return fmt.Errorf("start DNS server: call Stop before another Start")
 	}
+	if s.TSIGKey != nil {
+		if err := s.TSIGKey.validate(); err != nil {
+			return err
+		}
+	}
 	pc, tcpLn, err := s.listenPair()
 	if err != nil {
 		return err
 	}
 	s.addr = pc.LocalAddr().String()
-	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize)}
-	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize)}
+	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize), TsigSecret: s.TSIGKey.secrets()}
+	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize), TsigSecret: s.TSIGKey.secrets()}
 
 	if err := activateListener(s.dns); err != nil {
 		_ = pc.Close()
@@ -185,7 +191,19 @@ func (s *Server) expireKey(key storageKey, now time.Time) {
 // truncation, since TCP has no size limit).
 func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 	return func(w dns.ResponseWriter, req *dns.Msg) {
-		s.handle(w, req, truncateSize)
+		responseSize := truncateSize
+		if s.TSIGKey != nil {
+			t := req.IsTsig()
+			if t == nil || t.Hdr.Name != s.TSIGKey.Name || t.Algorithm != s.TSIGKey.Algorithm || w.TsigStatus() != nil {
+				// A failed rejection write needs no retry because storage remains inaccessible.
+				_ = w.WriteMsg(setRcode(req, dns.RcodeNotAuth))
+				return
+			}
+			w = &signedWriter{ResponseWriter: w, key: s.TSIGKey}
+			// Reserve the signature before truncation because Truncate skips signed messages.
+			responseSize -= 128 + len(s.TSIGKey.Name)
+		}
+		s.handle(w, req, responseSize)
 	}
 }
 
@@ -375,4 +393,14 @@ func (s *Server) Stop() {
 		<-s.done
 		s.stop = nil
 	}
+}
+
+type signedWriter struct {
+	dns.ResponseWriter
+	key *TSIGKey
+}
+
+func (w *signedWriter) WriteMsg(m *dns.Msg) error {
+	m.SetTsig(w.key.Name, w.key.Algorithm, 300, time.Now().Unix())
+	return w.ResponseWriter.WriteMsg(m)
 }

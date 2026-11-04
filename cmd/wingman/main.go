@@ -108,6 +108,7 @@ Usage:
 
 offer/answer flags:
   --addr 127.0.0.1:PORT   DNS server address printed by 'serve' (required for --signaling dns)
+  --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS queries
   --room NAME             signaling room shared by both peers (required)
   --zone example.com      authoritative DNS zone (default "example.com")
   --label wingman         data channel label (default "wingman")
@@ -122,6 +123,7 @@ offer/answer flags:
   --handshake-timeout D    positive handshake duration (default "30s")
 
 serve flags:
+  --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS authentication
   --zone example.com      authoritative DNS zone this server serves
   --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
   --turn-server ADDR      also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478)
@@ -137,6 +139,7 @@ func runServe(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
+	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
 	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
 	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
 	turnUser := fs.String("turn-user", "", "TURN username for the self-hosted server (enables relay candidates)")
@@ -145,7 +148,11 @@ func runServe(ctx context.Context, args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	srv, err := startServe()
+	key, err := loadOptionalTSIG(*tsigFile)
+	if err != nil {
+		return err
+	}
+	srv, err := startServe(key)
 	if err != nil {
 		return err
 	}
@@ -190,6 +197,7 @@ func runServe(ctx context.Context, args []string) error {
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
+	dnsTSIGKeyFile    string
 	addr              string
 	zone              string
 	room              string
@@ -209,6 +217,7 @@ type peerOpts struct {
 func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
+	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
 	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for --signaling dns)")
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone")
 	room := fs.String("room", "", "signaling room shared with the other peer (required)")
@@ -239,7 +248,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 		return peerOpts{}, fmt.Errorf("%s: --signaling-url is required for --signaling https", name)
 	}
 	return peerOpts{
-		addr: *addr, zone: *zone, room: *room, label: *label,
+		dnsTSIGKeyFile: *tsigFile, addr: *addr, zone: *zone, room: *room, label: *label,
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
 		allowLoopbackHTTP: *allowLoopbackHTTP,
 		turn:              turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
@@ -330,7 +339,13 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 func buildTransport(opts peerOpts) (sig.Transport, error) {
 	switch opts.signaling {
 	case "", "dns":
-		return newTransport(opts.addr, opts.zone), nil
+		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		tr := newTransport(opts.addr, opts.zone)
+		tr.Resolver.(*dns.Dialer).TSIGKey = key
+		return tr, nil
 	case "https":
 		tr, err := newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
 		if err != nil {
@@ -385,8 +400,11 @@ func runAnswer(ctx context.Context, args []string) error {
 
 // startServe starts an in-process DNS signaling server and returns it. Callers
 // stop it with srv.Stop().
-func startServe() (*dns.Server, error) {
+func startServe(keys ...*dns.TSIGKey) (*dns.Server, error) {
 	srv := dns.NewServer()
+	if len(keys) > 0 {
+		srv.TSIGKey = keys[0]
+	}
 	if err := srv.Start(context.Background()); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
@@ -415,7 +433,7 @@ func startTurnServer(out io.Writer, cfg turnserver.Config) (*turnserver.Server, 
 }
 
 // newTransport builds the DNS write-over-query transport pointed at srvAddr.
-func newTransport(srvAddr, zone string) sig.Transport {
+func newTransport(srvAddr, zone string) *dns.WriteOverQuery {
 	return &dns.WriteOverQuery{
 		Resolver:     &dns.Dialer{Addr: srvAddr, Net: "udp", Timeout: defaultDialTimeout},
 		Zone:         zone,
@@ -477,4 +495,11 @@ func chat(ctx context.Context, sess *peer.Session, role peer.Role, in io.Reader,
 	case err := <-readerDone:
 		return err
 	}
+}
+
+func loadOptionalTSIG(path string) (*dns.TSIGKey, error) {
+	if path == "" {
+		return nil, nil
+	}
+	return dns.LoadTSIGKey(path)
 }
