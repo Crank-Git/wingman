@@ -20,6 +20,26 @@ func TestParseKindInvalid(t *testing.T) {
 	}
 }
 
+func TestPollName(t *testing.T) {
+	got := PollName("example.com", "room1", Offer)
+	want := "room1.offer.sig.example.com"
+	if got != want {
+		t.Fatalf("PollName = %q, want %q", got, want)
+	}
+	// PollName omits the seq/total and payload labels that a fragment-write
+	// name carries, so it must differ from RendezvousName.
+	if got == RendezvousName("example.com", "room1", Offer, 0, 1, "payload") {
+		t.Fatal("PollName should omit seq/total and payload labels")
+	}
+}
+
+func TestInvalidKindString(t *testing.T) {
+	// An out-of-range Kind has no DNS label; String reports the gap.
+	if got := Kind(99).String(); got != "" {
+		t.Fatalf("Kind(99).String() = %q, want empty", got)
+	}
+}
+
 func TestRendezvousNameRoundTrip(t *testing.T) {
 	zone := "example.com"
 	room := "abc123token"
@@ -79,5 +99,23 @@ func TestParseRendezvousNameSeqNotLessThanTotal(t *testing.T) {
 	name := "room.5-2.payload.offer.sig.example.com"
 	if _, err := ParseRendezvousName(name); err == nil {
 		t.Fatal("expected error when seq >= total")
+	}
+}
+
+// TestParseRendezvousNameBadKind exercises the ParseKind failure inside
+// ParseRendezvousName (the kind label is present but unknown).
+func TestParseRendezvousNameBadKind(t *testing.T) {
+	name := "room.0-1.payload.bogus.sig.example.com"
+	if _, err := ParseRendezvousName(name); err == nil {
+		t.Fatal("expected error for unknown kind")
+	}
+}
+
+// TestParseRendezvousNameSeqNoDash exercises the missing dash in the
+// sequence/total label (e.g. "5" instead of "0-1").
+func TestParseRendezvousNameSeqNoDash(t *testing.T) {
+	name := "room.5.payload.offer.sig.example.com"
+	if _, err := ParseRendezvousName(name); err == nil {
+		t.Fatal("expected error when seq label has no dash")
 	}
 }

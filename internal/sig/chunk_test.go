@@ -130,6 +130,17 @@ func TestReassembleNoFragments(t *testing.T) {
 	}
 }
 
+// TestReassembleTooShortForCRC covers the case where the concatenated
+// fragment payload is shorter than the CRC trailer itself. Such a fragment set
+// cannot come from Fragments (which always appends a 4-byte trailer), so it is
+// constructed directly to exercise the guard.
+func TestReassembleTooShortForCRC(t *testing.T) {
+	frags := []Fragment{{Seq: 0, Total: 1, Data: []byte("a")}}
+	if _, err := Reassemble(frags); err == nil {
+		t.Fatal("expected error when reassembled message is too short for CRC")
+	}
+}
+
 func TestFragmentsEmpty(t *testing.T) {
 	if _, err := Fragments(nil, 0); err == nil {
 		t.Fatal("expected error for empty message")

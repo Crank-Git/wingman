@@ -43,6 +43,9 @@ func ParseKind(s string) (Kind, error) {
 // the kind and the zone, e.g. "...offer.sig.example".
 const sigLabel = "sig"
 
+// SigLabel is the exported signaling-section marker used in rendezvous names.
+const SigLabel = sigLabel
+
 // RendezvousName builds the canonical DNS name for a fragment:
 //
 //	<room>.<seq>-<total>.<payload>.<kind>.sig.<zone>
@@ -57,6 +60,15 @@ func RendezvousName(zone, room string, k Kind, seq, total uint16, payload string
 		sigLabel,
 		zone,
 	}, ".")
+}
+
+// PollName builds the stable name peers query to retrieve the current set of
+// fragments for a room. It has fewer labels than a fragment-write name because
+// it omits the seq/total and payload labels:
+//
+//	<room>.<kind>.sig.<zone>
+func PollName(zone, room string, k Kind) string {
+	return strings.Join([]string{room, k.String(), sigLabel, zone}, ".")
 }
 
 // ParsedName is the decoded form of a rendezvous name.
