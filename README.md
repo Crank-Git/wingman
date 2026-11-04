@@ -85,6 +85,17 @@ The `sig.Transport` interface has exactly two methods, `Publish` and `Poll`.
 All three are pluggable behind the same interface. The CLI selects one with
 `--signaling dns` (default) or `--signaling https --signaling-url https://…`.
 
+To enable the bundled TLS listener, supply `--https-listen`, `--tls-cert`, and `--tls-key` to `serve`.
+HTTPS stays disabled without `--https-listen`. The certificate and private key use PEM files.
+Supply `--signaling-secret-file /path/to/token` to the server and both HTTPS peers.
+The file must be a regular owner-readable file with no group or other permissions, such as mode `0600`.
+The file holds one nonempty token. Wingman trims surrounding whitespace and rejects internal whitespace and control characters.
+Peers also accept `--signaling-secret` for compatibility. Use only one nonempty secret source.
+Without a secret file, the server requires `--local-demo` and a literal loopback IP listen address.
+The TLS listener uses TLS 1.2 or newer and the system certificate trust policy on clients.
+Its header, read, write, and idle timeouts are 5, 15, 15, and 60 seconds.
+The TLS listener is independent from `--metrics-addr`.
+
 The HTTPS transport requires an absolute HTTPS service URL without URL userinfo.
 It rejects cross-origin redirects when `--signaling-secret` supplies credentials.
 For local development, `--signaling-allow-loopback-http` permits HTTP to loopback addresses or `localhost` only.
