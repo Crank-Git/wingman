@@ -62,10 +62,18 @@ func (m *Metrics) Failure() {
 	m.mu.Unlock()
 }
 
-// RecordCandidate increments the distribution count for a candidate type such
-// as "host", "srflx", "prflx", or "relay".
+// RecordCandidate counts host, srflx, prflx, and relay candidates.
+// Other values count as unknown to keep metric names valid and bounded.
 func (m *Metrics) RecordCandidate(kind string) {
+	switch kind {
+	case "host", "srflx", "prflx", "relay":
+	default:
+		kind = "unknown"
+	}
 	m.mu.Lock()
+	if m.candidates == nil {
+		m.candidates = make(map[string]int64)
+	}
 	m.candidates[kind]++
 	m.mu.Unlock()
 }
