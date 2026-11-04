@@ -10,7 +10,7 @@ func host(addr string, port uint16, localPref uint16) Candidate {
 }
 
 func TestRankHostBeforeRelay(t *testing.T) {
-	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: CandidatePriority(0, 65535, 1)}
+	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: mustCandidatePriority(t, 0, 65535, 1)}
 	h1 := host("192.168.1.10", 5000, 65535)
 	h2 := host("10.0.0.5", 5000, 65535)
 
@@ -36,8 +36,8 @@ func TestRankTieBreakByPriority(t *testing.T) {
 
 func TestRankTieBreakByNetwork(t *testing.T) {
 	// Same type and priority: network name orders the tie (tcp < udp).
-	tcp := Candidate{Type: CandidateTypeHost, Network: "tcp", Address: "192.168.1.10", Port: 5000, Component: 1, Priority: CandidatePriority(126, 65535, 1)}
-	udp := Candidate{Type: CandidateTypeHost, Network: "udp", Address: "192.168.1.10", Port: 5000, Component: 1, Priority: CandidatePriority(126, 65535, 1)}
+	tcp := Candidate{Type: CandidateTypeHost, Network: "tcp", Address: "192.168.1.10", Port: 5000, Component: 1, Priority: mustCandidatePriority(t, 126, 65535, 1)}
+	udp := Candidate{Type: CandidateTypeHost, Network: "udp", Address: "192.168.1.10", Port: 5000, Component: 1, Priority: mustCandidatePriority(t, 126, 65535, 1)}
 
 	ranked := Rank([]Candidate{udp, tcp})
 	if ranked[0].Network != "tcp" {
@@ -46,7 +46,7 @@ func TestRankTieBreakByNetwork(t *testing.T) {
 }
 
 func TestPreferred(t *testing.T) {
-	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: CandidatePriority(0, 65535, 1)}
+	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: mustCandidatePriority(t, 0, 65535, 1)}
 	h := host("192.168.1.10", 5000, 65535)
 
 	if got := Preferred([]Candidate{relay, h}); got.Type != CandidateTypeHost {
@@ -64,7 +64,7 @@ func TestPreferred(t *testing.T) {
 
 func TestByType(t *testing.T) {
 	h := host("192.168.1.10", 5000, 65535)
-	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: CandidatePriority(0, 65535, 1)}
+	relay := Candidate{Type: CandidateTypeRelay, Network: "udp", Address: "203.0.113.1", Port: 3478, Component: 1, Priority: mustCandidatePriority(t, 0, 65535, 1)}
 	g := ByType([]Candidate{h, relay, h})
 
 	if len(g[CandidateTypeHost]) != 2 {
