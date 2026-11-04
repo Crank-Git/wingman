@@ -158,7 +158,7 @@ body.rv-open .layout { padding-right:21rem; }
 </ul></aside>
 <main>
 <h1>Feature: HTTPS safety and atomic consumption</h1>
-<p class="meta">Epic 2: HTTPS repairs &nbsp; <span class="badge">issued</span></p>
+<p class="meta">Epic 2: HTTPS repairs &nbsp; <span class="badge">built</span></p>
 <h2 id="https-repairs-https-safety-and-atomic-consumption">HTTPS safety and atomic consumption</h2>
 <h3 id="https-repairs-purpose">Purpose</h3>
 <p>Bound the fallback handler and repair message consumption.</p>
@@ -210,15 +210,15 @@ body.rv-open .layout { padding-right:21rem; }
 <p>Two simultaneous GET requests produce exactly one 200 response. A GET for an old entry cannot delete a concurrent replacement. A client that loses the response must begin a new room exchange; automatic exactly-once delivery is out of scope.</p>
 <h3 id="https-repairs-acceptance-criteria">Acceptance criteria</h3>
 <ul>
-<li>[ ] FR-https-repairs-1: A 16385-byte body returns 413 without retention.
+<li>[x] FR-https-repairs-1: A 16385-byte body returns 413 without retention.
 </li>
-<li>[ ] FR-https-repairs-2: Capacity tests show retained bytes stay within the configured limit.
+<li>[x] FR-https-repairs-2: Capacity tests show retained bytes stay within the configured limit.
 </li>
-<li>[ ] FR-https-repairs-3: Concurrent consume tests produce one success without deleting a replacement.
+<li>[x] FR-https-repairs-3: Concurrent consume tests produce one success without deleting a replacement.
 </li>
-<li>[ ] FR-https-repairs-4: A remote HTTP URL fails before credentials or SDP leave the process.
+<li>[x] FR-https-repairs-4: A remote HTTP URL fails before credentials or SDP leave the process.
 </li>
-<li>[ ] FR-https-repairs-5: Malformed and overlong rooms return 400 without storage.
+<li>[x] FR-https-repairs-5: Malformed and overlong rooms return 400 without storage.
 </li>
 </ul>
 <h3 id="https-repairs-out-of-scope">Out of scope</h3>

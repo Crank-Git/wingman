@@ -120,7 +120,7 @@ The operator requests fixes first, followed by useful additions. The roadmap imp
 | HTTPS fallback transport | [https-existing](features/04-https-existing.md) | built | Existing behavior |
 | TURN and metrics | [ops-existing](features/05-ops-existing.md) | built | Existing behavior |
 | DNS isolation and resource limits | [dns-repairs](features/06-dns-repairs.md) | built | Epic 1: DNS repairs |
-| HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | issued | Epic 2: HTTPS repairs |
+| HTTPS safety and atomic consumption | [https-repairs](features/07-https-repairs.md) | built | Epic 2: HTTPS repairs |
 | Peer lifecycle and metric correctness | [peer-repairs](features/08-peer-repairs.md) | issued | Epic 3: Peer repairs |
 | Deployable servers and authentication | [server-operations](features/09-server-operations.md) | issued | Epic 4: Server operations |
 | RFC 2136 DynUpdate transport | [dynupdate](features/10-dynupdate.md) | issued | Epic 5: DynUpdate |
