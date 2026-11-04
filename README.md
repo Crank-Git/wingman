@@ -135,6 +135,18 @@ After the handshake succeeds, chat continues until normal exit.
 
 ### TURN / STUN (NAT traversal)
 
+After connection, each peer prints the selected local and remote candidate types:
+
+```text
+selected pair: local=relay remote=relay
+```
+
+The types are `host`, `srflx`, `prflx`, `relay`, or `unknown`.
+If selected-pair statistics are missing, the peer prints `selected pair: unavailable`.
+Gathered candidate totals remain separate metrics. They do not identify the selected pair.
+The internal `Session.SelectedCandidatePair` method returns these types and an availability boolean.
+It supports concurrent calls with `Session.Close`.
+
 Host candidates only reach a direct P2P connection when the peers are on the
 same LAN. Behind symmetric NATs the peers need a relay. Wingman configures a
 STUN/TURN server through the pion WebRTC engine, which gathers server-reflected

@@ -422,10 +422,21 @@ func TestRunPeerHappyPath(t *testing.T) {
 	if !strings.Contains(out.String(), "offer: connected") {
 		t.Fatalf("missing connected notice: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "selected pair: local=host remote=host") {
+		t.Fatalf("missing selected pair: %q", out.String())
+	}
 	select {
 	case <-remoteClosed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("runPeer leaves the remote channel open after EOF")
+	}
+}
+
+func TestSelectedPairOutputReportsUnavailable(t *testing.T) {
+	var out bytes.Buffer
+	printSelectedPair(&out, peer.CandidatePairTypes{}, false)
+	if got := out.String(); got != "selected pair: unavailable\n" {
+		t.Fatalf("selected pair output = %q", got)
 	}
 }
 
