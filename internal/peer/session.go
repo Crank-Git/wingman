@@ -9,6 +9,7 @@ package peer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -26,6 +27,9 @@ const defaultLabel = "wingman"
 // gathered before proceeding. Host gathering on loopback is fast; this only
 // guards against machines whose interfaces never report a complete state.
 const iceGatherTimeout = 10 * time.Second
+
+// ErrAlreadyStarted reports a second startup attempt on a Session.
+var ErrAlreadyStarted = errors.New("peer: session already started")
 
 // peerConn is the subset of *webrtc.PeerConnection used by the handshake. It is
 // a seam: newPeerConnection is a package variable so tests can substitute a
@@ -90,13 +94,16 @@ type Config struct {
 type MessageHandler func(data []byte)
 
 // Session drives a single offer/answer/ICE handshake and owns the resulting
-// data channel. It is not safe for concurrent use beyond the documented API.
+// data channel. Start permits one attempt, including an attempt that fails.
+// Concurrent Start calls return ErrAlreadyStarted after the first call reserves startup.
 type Session struct {
 	cfg   Config
 	role  Role
 	label string
 
+	// mu guards started, pc, dataChan, onMessage, and met.
 	mu        sync.Mutex
+	started   bool
 	pc        peerConn
 	dataChan  *webrtc.DataChannel
 	onMessage MessageHandler
@@ -158,12 +165,18 @@ func (s *Session) SendText(text string) error {
 
 // Start runs the full handshake and blocks until the data channel is open or
 // ctx is canceled. It returns the open data channel on success.
+// An invalid role fails before allocation. A repeated call returns ErrAlreadyStarted.
 func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
+	if err := s.reserveStart(); err != nil {
+		return nil, err
+	}
 	pc, err := newPeerConnection(configuration(s.cfg))
 	if err != nil {
 		return nil, fmt.Errorf("peer: new peer connection: %w", err)
 	}
+	s.mu.Lock()
 	s.pc = pc
+	s.mu.Unlock()
 
 	done := make(chan error, 1)
 	// signal records the outcome without touching the peer connection. On
@@ -243,6 +256,20 @@ func (s *Session) Start(ctx context.Context) (*webrtc.DataChannel, error) {
 	return dc, nil
 }
 
+func (s *Session) reserveStart() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.role != RoleOfferer && s.role != RoleAnswerer {
+		return fmt.Errorf("peer: invalid role %d", s.role)
+	}
+	if s.started {
+		return ErrAlreadyStarted
+	}
+	// Allocation can fail, but the Session still owns this attempt.
+	s.started = true
+	return nil
+}
+
 // runOfferer creates the data channel, publishes the offer, waits for the
 // answer, and returns. ICE then proceeds and the channel opens.
 func (s *Session) runOfferer(ctx context.Context, pc peerConn) error {
@@ -260,7 +287,7 @@ func (s *Session) runOfferer(ctx context.Context, pc peerConn) error {
 	if err := pc.SetLocalDescription(offer); err != nil {
 		return fmt.Errorf("peer: set local description: %w", err)
 	}
-	if err := s.waitGathering(ctx); err != nil {
+	if err := s.waitGathering(ctx, pc); err != nil {
 		return err
 	}
 	full, err := encodeSDP(*pc.LocalDescription())
@@ -306,7 +333,7 @@ func (s *Session) runAnswerer(ctx context.Context, pc peerConn) error {
 	if err := pc.SetLocalDescription(answer); err != nil {
 		return fmt.Errorf("peer: set local description: %w", err)
 	}
-	if err := s.waitGathering(ctx); err != nil {
+	if err := s.waitGathering(ctx, pc); err != nil {
 		return err
 	}
 	full, err := encodeSDP(*pc.LocalDescription())
@@ -320,12 +347,12 @@ func (s *Session) runAnswerer(ctx context.Context, pc peerConn) error {
 }
 
 // waitGathering blocks until ICE host gathering completes or ctx/timeout fires.
-func (s *Session) waitGathering(ctx context.Context) error {
+func (s *Session) waitGathering(ctx context.Context, pc peerConn) error {
 	deadline := time.After(iceGatherTimeout)
 	ticker := time.NewTicker(20 * time.Millisecond)
 	defer ticker.Stop()
 	for {
-		if s.pc.ICEGatheringState() == webrtc.ICEGatheringStateComplete {
+		if pc.ICEGatheringState() == webrtc.ICEGatheringStateComplete {
 			return nil
 		}
 		select {
