@@ -14,12 +14,17 @@ import (
 )
 
 type pollReply struct {
-	reply  *mdns.Msg
-	calls  int
-	cancel context.CancelFunc
+	reply    *mdns.Msg
+	calls    int
+	cleanups int
+	cancel   context.CancelFunc
 }
 
 func (r *pollReply) Exchange(_ context.Context, m *mdns.Msg) (*mdns.Msg, error) {
+	if m.Opcode == mdns.OpcodeUpdate {
+		r.cleanups++
+		return new(mdns.Msg), nil
+	}
 	r.calls++
 	if m.IsEdns0() != nil || m.Question[0].Name != "room.offer.sig.example.com." {
 		panic("invalid Poll query")
@@ -48,10 +53,14 @@ func TestDynUpdatePollReconstructsShuffledAnswer(t *testing.T) {
 		m.Answer[i], m.Answer[j] = m.Answer[j], m.Answer[i]
 	}
 	tr := newPublishTransport(t, "localhost:53")
-	tr.Resolver = &pollReply{reply: m}
+	r := &pollReply{reply: m}
+	tr.Resolver = r
 	got, err := tr.Poll(context.Background(), "RoOm", sig.Offer)
 	if err != nil || !bytes.Equal(got, msg) {
 		t.Fatalf("reconstruction: %v", err)
+	}
+	if r.calls != 1 || r.cleanups != 1 {
+		t.Fatalf("queries=%d cleanups=%d", r.calls, r.cleanups)
 	}
 }
 
@@ -89,7 +98,7 @@ func TestDynUpdatePollRejectsInvalidAnswers(t *testing.T) {
 			tr := newPublishTransport(t, "localhost:53")
 			r := &pollReply{reply: m}
 			tr.Resolver = r
-			if _, err := tr.Poll(context.Background(), "room", sig.Offer); err == nil || strings.Contains(err.Error(), "private-sdp") || r.calls != 1 {
+			if _, err := tr.Poll(context.Background(), "room", sig.Offer); err == nil || strings.Contains(err.Error(), "private-sdp") || r.calls != 1 || r.cleanups != 0 {
 				t.Fatalf("validation: %v calls=%d", err, r.calls)
 			}
 		})
@@ -104,7 +113,7 @@ func TestDynUpdatePollRetriesOnlyMisses(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 280*time.Millisecond)
 		_, err := tr.Poll(ctx, "room", sig.Offer)
 		cancel()
-		if !errors.Is(err, context.DeadlineExceeded) || r.calls < 2 {
+		if !errors.Is(err, context.DeadlineExceeded) || r.calls < 2 || r.cleanups != 0 {
 			t.Fatalf("retry: %v calls=%d", err, r.calls)
 		}
 	}
