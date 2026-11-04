@@ -2,7 +2,7 @@
 id: https-repairs
 feature: HTTPS safety and atomic consumption
 epic: Epic 2: HTTPS repairs
-status: issued
+status: built
 issues: [22, 23, 24, 25, 26]
 mockups: [mockups/07-https-repairs.html]
 ---
@@ -68,11 +68,11 @@ A GET for an old entry cannot delete a concurrent replacement.
 A client that loses the response must begin a new room exchange; automatic exactly-once delivery is out of scope.
 
 ## Acceptance criteria
-- [ ] FR-https-repairs-1: A 16385-byte body returns 413 without retention.
-- [ ] FR-https-repairs-2: Capacity tests show retained bytes stay within the configured limit.
-- [ ] FR-https-repairs-3: Concurrent consume tests produce one success without deleting a replacement.
-- [ ] FR-https-repairs-4: A remote HTTP URL fails before credentials or SDP leave the process.
-- [ ] FR-https-repairs-5: Malformed and overlong rooms return 400 without storage.
+- [x] FR-https-repairs-1: A 16385-byte body returns 413 without retention.
+- [x] FR-https-repairs-2: Capacity tests show retained bytes stay within the configured limit.
+- [x] FR-https-repairs-3: Concurrent consume tests produce one success without deleting a replacement.
+- [x] FR-https-repairs-4: A remote HTTP URL fails before credentials or SDP leave the process.
+- [x] FR-https-repairs-5: Malformed and overlong rooms return 400 without storage.
 
 ## Out of scope
 No durable queue, acknowledgment protocol, account database, or idle sweep goroutine.
