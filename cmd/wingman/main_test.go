@@ -422,10 +422,73 @@ func TestRunPeerHappyPath(t *testing.T) {
 	if !strings.Contains(out.String(), "offer: connected") {
 		t.Fatalf("missing connected notice: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "selected pair: local=host remote=host") {
+		t.Fatalf("missing selected pair: %q", out.String())
+	}
 	select {
 	case <-remoteClosed:
 	case <-time.After(5 * time.Second):
 		t.Fatal("runPeer leaves the remote channel open after EOF")
+	}
+}
+
+func TestSelectedPairOutputReportsUnavailable(t *testing.T) {
+	var out bytes.Buffer
+	if err := printSelectedPair(&out, peer.CandidatePairTypes{}, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "selected pair: unavailable\n" {
+		t.Fatalf("selected pair output = %q", got)
+	}
+}
+
+type selectedPairErrorWriter struct{ cause error }
+
+func (w selectedPairErrorWriter) Write([]byte) (int, error) { return 0, w.cause }
+
+func TestSelectedPairOutputPreservesWriterError(t *testing.T) {
+	cause := errors.New("selected pair output failed")
+	for _, available := range []bool{false, true} {
+		err := printSelectedPair(selectedPairErrorWriter{cause}, peer.CandidatePairTypes{Local: "host", Remote: "relay"}, available)
+		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "write selected pair") {
+			t.Fatalf("available=%v: error = %v", available, err)
+		}
+	}
+}
+
+func TestRunPeerPreservesSelectedPairWriterError(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: "output-error", label: "wingman"}
+	transport, err := buildTransport(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := peer.NewSession(peer.RoleAnswerer, peer.Config{Room: opts.room, Zone: opts.zone, Transport: transport})
+	defer func() {
+		if err := remote.Close(); err != nil {
+			t.Errorf("close remote: %v", err)
+		}
+	}()
+	done := make(chan error, 1)
+	go func() {
+		_, err := remote.Start(ctx)
+		done <- err
+	}()
+	cause := errors.New("selected pair output failed")
+	err = runPeer(ctx, peer.RoleOfferer, opts, strings.NewReader(""), selectedPairErrorWriter{cause})
+	cancel()
+	if remoteErr := <-done; remoteErr != nil {
+		// The local output failure can close the channel before remote startup returns.
+		t.Logf("remote startup after local output failure: %v", remoteErr)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "write selected pair") {
+		t.Fatalf("runPeer error = %v", err)
 	}
 }
 
@@ -661,6 +724,7 @@ func TestCLIExec(t *testing.T) {
 	}
 	t.Run("DynUpdate rejects invalid configuration", func(t *testing.T) { checkDynUpdateCLI(t, bin) })
 	t.Run("DynUpdate cleanup recovers a room", func(t *testing.T) { checkDynUpdateCleanupCLI(t, bin) })
+	t.Run("Doctor reports process results", func(t *testing.T) { checkDoctorOutputCLI(t, bin) })
 
 	// help should exit 0 and print the usage banner.
 	helpCmd := exec.Command(bin, "help")

@@ -1,17 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [[ $# != 2 || $1 != --scenario || ( $2 != dns && $2 != readiness && $2 != two-peer && $2 != all ) ]]; then
-  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns|readiness|two-peer|all' >&2
+if [[ $# != 2 || $1 != --scenario || ( $2 != dns && $2 != readiness && $2 != two-peer && $2 != relay && $2 != all ) ]]; then
+  echo 'usage: bash scripts/namespace-smoke.sh --scenario dns|readiness|two-peer|relay|all' >&2
   exit 1
 fi
-arch="$(docker info --format '{{.Architecture}}')"
+skip() { echo "namespace skip: $*" >&2; exit 77; }
+command -v docker >/dev/null || skip 'Docker is unavailable'
+command -v go >/dev/null || skip 'Go is unavailable'
+arch="$(docker info --format '{{.Architecture}}')" || skip 'Docker daemon is unavailable'
 case "$arch" in
   aarch64|arm64) goarch=arm64 ;;
   x86_64|amd64) goarch=amd64 ;;
-  *) echo "unsupported Docker architecture: $arch" >&2; exit 1 ;;
+  *) skip "unsupported Docker architecture: $arch" ;;
 esac
-[[ "$(docker info --format '{{.OSType}}')" == linux ]] || { echo 'namespace smoke requires a Linux Docker daemon' >&2; exit 1; }
+[[ "$(docker info --format '{{.OSType}}')" == linux ]] || skip 'a Linux Docker daemon is required'
 work="$(mktemp -d "${TMPDIR:-/tmp}/wingman-namespace.XXXXXX")"
 name="wingman-namespace-$$"
 cleanup() {
@@ -37,13 +40,12 @@ else
   echo 'capability probe: NET_ADMIN+SYS_ADMIN fails; test isolated privileged container' >&2
   caps=(--privileged)
   if ! docker run --rm --network=none "${caps[@]}" --entrypoint bash "$image" -c 'ip netns add probe && ip netns exec probe ip link set lo up && ip netns del probe'; then
-    echo 'namespace capability unavailable: privileged probe fails' >&2
-    exit 1
+    skip 'namespace capability is unavailable; privileged probe fails'
   fi
   echo 'capability probe: privileged passes'
 fi
 scenarios=("$2")
-if [[ $2 == all ]]; then scenarios=(dns readiness two-peer); fi
+if [[ $2 == all ]]; then scenarios=(dns readiness two-peer relay); fi
 for scenario in "${scenarios[@]}"; do
   echo "namespace scenario: $scenario"
   if docker run --rm --name "$name" --network=none "${caps[@]}" \

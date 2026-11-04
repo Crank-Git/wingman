@@ -3,6 +3,7 @@ set -euo pipefail
 server_pid=
 offer_pid=
 answer_pid=
+scenario_work=
 cleanup() {
   local status=$?
   trap - EXIT
@@ -31,6 +32,10 @@ cleanup() {
     echo 'namespace cleanup: namespaces remain' >&2
     status=1
   fi
+  if [[ -n "$scenario_work" ]]; then
+    rm -rf "$scenario_work" || status=1
+    if [[ -e "$scenario_work" ]]; then status=1; fi
+  fi
   echo "namespace cleanup: exit $status"
   exit "$status"
 }
@@ -51,6 +56,6 @@ done
 case "${1:-}" in
   dns) source /repo/scripts/namespace/dns.sh ;;
   readiness) source /repo/scripts/namespace/readiness.sh ;;
-  two-peer) source /repo/scripts/namespace/two-peer.sh ;;
+  two-peer|relay) source /repo/scripts/namespace/two-peer.sh ;;
   *) echo 'unknown namespace scenario' >&2; exit 1 ;;
 esac

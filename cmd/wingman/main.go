@@ -1,10 +1,12 @@
 // Command wingman is a local peer CLI for the Wingman WebRTC signaling system.
 //
-// It provides three subcommands:
+// It provides five subcommands:
 //
 //	serve   start an in-process DNS signaling server and print its address
 //	offer   run the offerer role: create a data channel, then type messages to send
 //	answer  run the answerer role: receive the data channel and print incoming messages
+//	cleanup delete one DynUpdate room's offer and answer records
+//	doctor  check the selected signaling endpoint in a disposable room
 //
 // For a local single-host demo, start one server and point both peers at it:
 //
@@ -91,6 +93,8 @@ func dispatch(ctx context.Context, args []string) error {
 		return runAnswer(ctx, args[1:])
 	case "cleanup":
 		return runCleanup(ctx, args[1:])
+	case "doctor":
+		return runDoctor(ctx, args[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -107,6 +111,9 @@ Usage:
   wingman offer  [flags]             run the offerer: create a data channel, then type messages
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
   wingman cleanup [flags]            delete one DynUpdate room's offer and answer TXT RRsets
+  wingman doctor [flags]             probe the selected endpoint in a random disposable room
+
+doctor mutates only a random disposable probe room. Run wingman doctor --help for probe limits.
 
 cleanup flags (all required):
   --addr HOST:PORT --zone ZONE --room NAME --dns-tsig-key-file PATH
@@ -311,11 +318,28 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 	defer func() {
 		err = closePeerSession(sess.Close, err)
 	}()
+	pair, available := sess.SelectedCandidatePair()
+	if err := printSelectedPair(out, pair, available); err != nil {
+		return err
+	}
 	err = chat(ctx, sess, role, in, out)
 	if opts.metrics {
 		fmt.Fprint(out, m.Text())
 	}
 	return err
+}
+
+func printSelectedPair(out io.Writer, pair peer.CandidatePairTypes, available bool) error {
+	var err error
+	if !available {
+		_, err = fmt.Fprintln(out, "selected pair: unavailable")
+	} else {
+		_, err = fmt.Fprintf(out, "selected pair: local=%s remote=%s\n", pair.Local, pair.Remote)
+	}
+	if err != nil {
+		return fmt.Errorf("write selected pair: %w", err)
+	}
+	return nil
 }
 
 func closePeerSession(closeSession func() error, result error) error {

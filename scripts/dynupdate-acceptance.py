@@ -120,7 +120,7 @@ def acceptance(platform=None):
             run("go", "build", "-o", str(binary), "./cmd/wingman")
             env = dict(os.environ, WINGMAN_BIND_ADDR=address,
                        WINGMAN_BIND_KEY=str(work / "key.json"), WINGMAN_BIND_CLI=str(binary))
-            print(run("go", "test", "-tags=bindintegration", "./internal/dns",
+            print(run("go", "test", "-tags=bindintegration", "./internal/dns", "./cmd/wingman",
                       "-run", "^TestBIND", "-count=1", "-v", env=env), flush=True)
         except Exception:
             print("\n".join(run("docker", "logs", name).splitlines()[-25:]), file=sys.stderr)
