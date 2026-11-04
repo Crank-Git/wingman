@@ -2,6 +2,7 @@ package dns
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -104,7 +105,23 @@ func (t *WriteOverQuery) Poll(ctx context.Context, room string, k sig.Kind) ([]b
 			wait(ctx, t.PollInterval)
 			continue
 		}
-		return sig.Reassemble(frags)
+		data, err := sig.Reassemble(frags)
+		if err != nil {
+			// An incomplete message is transient: the publisher may still be
+			// writing fragments, or the UDP response was truncated and the next
+			// poll falls back to TCP. Keep polling until the message completes or
+			// ctx expires.
+			if errors.Is(err, sig.ErrIncomplete) {
+				retries++
+				if t.PollRetries > 0 && retries >= t.PollRetries {
+					return nil, &PollError{Room: room, Kind: k.String(), Retries: retries}
+				}
+				wait(ctx, t.PollInterval)
+				continue
+			}
+			return nil, err
+		}
+		return data, nil
 	}
 }
 
