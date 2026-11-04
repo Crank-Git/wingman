@@ -136,11 +136,16 @@ STUN/TURN server through the pion WebRTC engine, which gathers server-reflected
 
 ```
 wingman offer --addr 127.0.0.1:PORT --room demo \
-  --turn turn:stun.example.com:3478 --user bob --pass s3cret
+  --turn turn:stun.example.com:3478 --user bob --pass-file /path/to/turn-password
 ```
 
-`--turn` is repeatable to list several servers; `--user`/`--pass` supply the
-long-term TURN credential. STUN URIs need no credential. The URIs are validated
+`--turn` is repeatable to list several servers. `--user` and `--pass-file` supply the long-term TURN credential.
+Use `serve --turn-pass-file /path/to/turn-password` for a self-hosted TURN server.
+The password file must be a regular owner-readable file with no group or other permissions (for example, mode `0600`).
+The file contains one nonempty token. The command removes surrounding whitespace and rejects internal whitespace and control characters.
+The direct `--pass` and `--turn-pass` flags remain available.
+If both password sources are nonempty, the command rejects the configuration.
+STUN URIs need no credential. The URIs are validated
 (`internal/turn`) and turned into the pion ICE-server slice that the peer wires
 into its `PeerConnection`.
 
