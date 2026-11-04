@@ -1,8 +1,8 @@
 # DynUpdate configuration
 
 The CLI accepts `--signaling dynupdate` for the planned RFC 2136 transport.
-Issue #41 supplies configuration validation. Issues #42 and #43 supply Publish and Poll.
-Until those issues complete, these operations return an error.
+The constructor validates configuration. Publish replaces a complete TXT RRset through authenticated TCP.
+Poll remains unavailable until issue #43 completes. The complete backend remains unshipped until epic #40 completes.
 
 Both `offer` and `answer` require these flags:
 
@@ -31,5 +31,20 @@ It converts the zone to lowercase and removes the final dot.
 `DynUpdate` implements `sig.Transport`.
 Its `Resolver` uses `dns.Dialer` with TCP, a five-second timeout, and the supplied TSIG key.
 Its `Zone` holds the canonical zone.
-Set the transport fields and key fields before concurrent use.
-The configuration slice does not establish protocol or BIND interoperability.
+The constructor retains a key copy for the default dialer and wire checks.
+Set transport fields before concurrent use. An injected resolver must provide authenticated TCP exchanges.
+Publish rejects a zero-value transport before network access.
+
+## Publish
+
+Publish uses the owner `<room>.<kind>.sig.<zone>.`.
+Each TXT record contains `<seq>-<total>:<payload>` with the existing base32 bytes and final CRC trailer.
+One UPDATE deletes the old TXT RRset and inserts all new records with TTL one.
+TTL controls cache retention. It does not delete authoritative records.
+Publish checks the signed UPDATE and expected complete TXT response against the 60 KiB wire budget.
+The absolute DNS limit is 65535 bytes. The decoded message limit is 16 KiB.
+DynUpdate uses TCP without EDNS0. The response model therefore has no OPT record.
+Long names can reduce the effective message limit.
+Size failures return `DynUpdateSizeError`. Authenticated DNS rejections return `DynUpdateRcodeError`.
+Exchange failures preserve their causes. Unsigned responses and invalid signatures fail through the existing dialer.
+The loopback fixture checks the protocol. Issue #45 supplies real BIND interoperability evidence.

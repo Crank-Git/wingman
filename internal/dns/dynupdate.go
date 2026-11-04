@@ -13,10 +13,11 @@ import (
 )
 
 // DynUpdate holds the authenticated RFC 2136 transport configuration.
-// Set its fields before concurrent use. Publish and Poll require issues #42 and #43.
+// Set its fields before concurrent use. Poll requires issue #43.
 type DynUpdate struct {
 	Resolver Resolver
 	Zone     string
+	key      TSIGKey
 }
 
 // NewDynUpdate returns a transport with a signed TCP resolver and a canonical zone.
@@ -41,15 +42,9 @@ func NewDynUpdate(addr, zone string, key *TSIGKey) (*DynUpdate, error) {
 	if err := key.validate(); err != nil {
 		return nil, fmt.Errorf("DynUpdate authentication: %w", err)
 	}
-	return &DynUpdate{
-		Resolver: &Dialer{Addr: addr, Net: "tcp", Timeout: 5 * time.Second, TSIGKey: key},
-		Zone:     zone,
-	}, nil
-}
-
-// Publish returns an error until issue #42 supplies the authenticated UPDATE operation.
-func (t *DynUpdate) Publish(context.Context, string, sig.Kind, []byte) error {
-	return errors.New("DynUpdate Publish requires issue #42")
+	transport := &DynUpdate{Zone: zone, key: *key}
+	transport.Resolver = &Dialer{Addr: addr, Net: "tcp", Timeout: 5 * time.Second, TSIGKey: &transport.key}
+	return transport, nil
 }
 
 // Poll returns an error until issue #43 supplies TXT reconstruction.
