@@ -36,3 +36,6 @@ jobs:
 
       - name: Namespace acceptance
         run: bash scripts/namespace-smoke.sh --scenario all
+
+      - name: BIND acceptance
+        run: python3 scripts/dynupdate-acceptance.py
