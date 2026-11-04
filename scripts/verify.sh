@@ -47,6 +47,7 @@ run_stage quality-tests python3 -m unittest discover -s scripts -p test_quality.
 run_stage coverage-tests bash scripts/coverage_test.sh
 run_stage verify-tests python3 -m unittest discover -s scripts -p test_verify.py
 run_stage namespace-tests python3 -m unittest discover -s scripts -p test_namespace.py
+run_stage dynupdate-fixture-tests python3 -m unittest discover -s scripts -p test_dynupdate.py
 run_stage vet go vet ./...
 run_stage coverage bash scripts/coverage.sh
 run_stage race go test -race ./...
