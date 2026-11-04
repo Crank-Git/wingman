@@ -182,8 +182,8 @@ func TestPollOnceBadPayload(t *testing.T) {
 	resp.SetEdns0(4096, false)
 	resp.Rcode = dns.RcodeSuccess
 	resp.Answer = append(resp.Answer, &dns.TXT{
-		Hdr:  dns.RR_Header{Name: "room.offer.sig.example.com", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
-		Txt:  []string{"room.0-1.%%%%.offer.sig.example.com"},
+		Hdr: dns.RR_Header{Name: "room.offer.sig.example.com", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
+		Txt: []string{"room.0-1.%%%%.offer.sig.example.com"},
 	})
 	tr := &WriteOverQuery{Resolver: &fixedResolver{resp: resp}}
 	if _, err := tr.Poll(ctx, "room", sig.Offer); err == nil {
@@ -297,8 +297,8 @@ func malformedAnswer() *dns.Msg {
 	resp.Rcode = dns.RcodeSuccess
 	// A TXT answer whose single string is not a valid rendezvous name.
 	resp.Answer = append(resp.Answer, &dns.TXT{
-		Hdr:  dns.RR_Header{Name: "room.offer.sig.example.com", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
-		Txt:  []string{"not-a-valid-fragment-name"},
+		Hdr: dns.RR_Header{Name: "room.offer.sig.example.com", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
+		Txt: []string{"not-a-valid-fragment-name"},
 	})
 	return resp
 }

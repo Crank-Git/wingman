@@ -155,15 +155,15 @@ func (m *Metrics) HandshakeLatencyAvg() time.Duration {
 
 // Snapshot is an immutable point-in-time copy of a Metrics.
 type Snapshot struct {
-	ConnectionsAttempted int64
-	ConnectionsSucceeded int64
-	ConnectionsFailed    int64
-	Failures             int64
-	Candidates           map[string]int64
-	HandshakeCount       int64
+	ConnectionsAttempted  int64
+	ConnectionsSucceeded  int64
+	ConnectionsFailed     int64
+	Failures              int64
+	Candidates            map[string]int64
+	HandshakeCount        int64
 	HandshakeLatencyTotal time.Duration
-	HandshakeLatencyMax  time.Duration
-	HandshakeLatencyAvg  time.Duration
+	HandshakeLatencyMax   time.Duration
+	HandshakeLatencyAvg   time.Duration
 }
 
 // Snapshot returns a copy of the current metrics.
