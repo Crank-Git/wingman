@@ -185,17 +185,17 @@ func runServe(ctx context.Context, args []string) error {
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	addr         string
-	zone         string
-	room         string
-	label        string
-	signaling        string
-	signalingURL     string
-	signalingSecret  string
-	turn             []string
-	user         string
-	pass         string
-	metrics      bool
+	addr            string
+	zone            string
+	room            string
+	label           string
+	signaling       string
+	signalingURL    string
+	signalingSecret string
+	turn            []string
+	user            string
+	pass            string
+	metrics         bool
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.

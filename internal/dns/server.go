@@ -19,8 +19,8 @@ import (
 type Server struct {
 	mu    sync.Mutex
 	frags map[string]map[uint16]sig.Fragment // key: room + "/" + kind
-	dns   *dns.Server // UDP
-	tcp   *dns.Server // TCP
+	dns   *dns.Server                        // UDP
+	tcp   *dns.Server                        // TCP
 	addr  string
 }
 

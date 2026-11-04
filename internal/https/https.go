@@ -10,10 +10,10 @@ package https
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 	"io"
 	"net/http"
-	"crypto/subtle"
 	"strconv"
 	"strings"
 	"sync"
