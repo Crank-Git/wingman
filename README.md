@@ -46,6 +46,12 @@ The `sig.Transport` interface has exactly two methods, `Publish` and `Poll`.
 All three are pluggable behind the same interface. The CLI selects one with
 `--signaling dns` (default) or `--signaling https --signaling-url https://…`.
 
+The HTTPS transport requires an absolute HTTPS service URL without URL userinfo.
+It rejects cross-origin redirects when `--signaling-secret` supplies credentials.
+For local development, `--signaling-allow-loopback-http` permits HTTP to loopback addresses or `localhost` only.
+The Go transport exposes the same option as `https.Transport.AllowLoopbackHTTP`.
+For example, use `--signaling https --signaling-url http://127.0.0.1:8080 --signaling-allow-loopback-http` with a local handler.
+
 ### Polling
 
 Peers poll the authoritative server for not-yet-published names. To keep polling

@@ -13,7 +13,9 @@ import (
 	"crypto/subtle"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +47,8 @@ type Transport struct {
 	Client *http.Client
 	// BaseURL is the signaling endpoint, e.g. "https://signaling.example.com".
 	BaseURL string
+	// AllowLoopbackHTTP permits plaintext HTTP for local development and tests.
+	AllowLoopbackHTTP bool
 	// PollInterval is the delay between poll attempts. Defaults to 250ms.
 	PollInterval time.Duration
 	// PollRetries bounds consecutive misses before giving up. 0 means unlimited.
@@ -56,6 +60,8 @@ type Transport struct {
 
 // withDefaults fills in the zero-valued fields.
 func (t *Transport) withDefaults() *Transport {
+	copy := *t
+	t = &copy
 	if t.Client == nil {
 		t.Client = http.DefaultClient
 	}
@@ -63,6 +69,56 @@ func (t *Transport) withDefaults() *Transport {
 		t.PollInterval = defaultPollInterval
 	}
 	return t
+}
+
+// validateURL prevents credentials and SDP from leaving through an unsafe URL.
+func (t *Transport) validateURL(u *url.URL) error {
+	if !u.IsAbs() || u.Hostname() == "" || u.User != nil || u.Opaque != "" {
+		return fmt.Errorf("https: service URL requires an absolute host without userinfo")
+	}
+	if u.Scheme == "https" {
+		return nil
+	}
+	ip := net.ParseIP(u.Hostname())
+	if u.Scheme == "http" && t.AllowLoopbackHTTP && (strings.EqualFold(u.Hostname(), "localhost") || ip != nil && ip.IsLoopback()) {
+		return nil
+	}
+	return fmt.Errorf("https: service URL requires HTTPS; HTTP requires the loopback development option")
+}
+
+// secureClient preserves the caller policy without changing the caller client.
+func (t *Transport) secureClient() *http.Client {
+	client := *t.Client
+	policy := client.CheckRedirect
+	client.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if err := t.validateURL(req.URL); err != nil {
+			return err
+		}
+		if t.Secret != "" && !sameOrigin(req.URL, via[0].URL) {
+			return fmt.Errorf("https: cross-origin redirect with credentials")
+		}
+		if policy != nil {
+			return policy(req, via)
+		}
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		return nil
+	}
+	return &client
+}
+
+func sameOrigin(a, b *url.URL) bool {
+	port := func(u *url.URL) string {
+		if u.Port() != "" {
+			return u.Port()
+		}
+		if u.Scheme == "https" {
+			return "443"
+		}
+		return "80"
+	}
+	return a.Scheme == b.Scheme && strings.EqualFold(a.Hostname(), b.Hostname()) && port(a) == port(b)
 }
 
 // endpoint builds the signaling URL for a room/kind pair.
@@ -77,10 +133,13 @@ func (t *Transport) Publish(ctx context.Context, room string, k sig.Kind, msg []
 	if err != nil {
 		return fmt.Errorf("https: new request: %w", err)
 	}
+	if err := t.validateURL(req.URL); err != nil {
+		return err
+	}
 	if t.Secret != "" {
 		req.Header.Set(secretHeader, t.Secret)
 	}
-	resp, err := t.Client.Do(req)
+	resp, err := t.secureClient().Do(req)
 	if err != nil {
 		return fmt.Errorf("https: publish: %w", err)
 	}
@@ -107,10 +166,13 @@ func (t *Transport) Poll(ctx context.Context, room string, k sig.Kind) ([]byte, 
 		if err != nil {
 			return nil, fmt.Errorf("https: new request: %w", err)
 		}
+		if err := t.validateURL(req.URL); err != nil {
+			return nil, err
+		}
 		if t.Secret != "" {
 			req.Header.Set(secretHeader, t.Secret)
 		}
-		resp, err := t.Client.Do(req)
+		resp, err := t.secureClient().Do(req)
 		if err != nil {
 			return nil, fmt.Errorf("https: poll: %w", err)
 		}

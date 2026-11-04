@@ -110,6 +110,7 @@ offer/answer flags:
   --label wingman         data channel label (default "wingman")
   --signaling dns|https   signaling transport (default "dns")
   --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
+  --signaling-allow-loopback-http  permit loopback HTTP for development and tests
   --signaling-secret S    shared secret for --signaling https (authenticates the channel)
   --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
   --user NAME             TURN username for --turn servers
@@ -185,17 +186,18 @@ func runServe(ctx context.Context, args []string) error {
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	addr            string
-	zone            string
-	room            string
-	label           string
-	signaling       string
-	signalingURL    string
-	signalingSecret string
-	turn            []string
-	user            string
-	pass            string
-	metrics         bool
+	addr              string
+	zone              string
+	room              string
+	label             string
+	signaling         string
+	signalingURL      string
+	signalingSecret   string
+	allowLoopbackHTTP bool
+	turn              []string
+	user              string
+	pass              string
+	metrics           bool
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
@@ -209,6 +211,7 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
 	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
 	signalingSecret := fs.String("signaling-secret", "", "shared secret for --signaling https (authenticates the signaling channel)")
+	allowLoopbackHTTP := fs.Bool("signaling-allow-loopback-http", false, "permit loopback HTTP for development and tests")
 	var turnServers stringSliceFlag
 	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
 	user := fs.String("user", "", "TURN username for --turn servers")
@@ -229,7 +232,8 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	return peerOpts{
 		addr: *addr, zone: *zone, room: *room, label: *label,
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
-		turn: turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		allowLoopbackHTTP: *allowLoopbackHTTP,
+		turn:              turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
 	}, nil
 }
 
@@ -287,14 +291,19 @@ func buildTransport(opts peerOpts) (sig.Transport, error) {
 	case "", "dns":
 		return newTransport(opts.addr, opts.zone), nil
 	case "https":
-		return newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
+		tr, err := newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
+		if err != nil {
+			return nil, err
+		}
+		tr.AllowLoopbackHTTP = opts.allowLoopbackHTTP
+		return tr, nil
 	default:
 		return nil, fmt.Errorf("unknown signaling %q (want dns or https)", opts.signaling)
 	}
 }
 
 // newHTTPSTransport builds an HTTPS transport from the given base URL.
-func newHTTPSTransport(baseURL, secret string) (sig.Transport, error) {
+func newHTTPSTransport(baseURL, secret string) (*https.Transport, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("https: --signaling-url is required for --signaling https")
 	}
