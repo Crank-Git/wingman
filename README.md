@@ -78,8 +78,8 @@ The `sig.Transport` interface has exactly two methods, `Publish` and `Poll`.
 - **`WriteOverQuery`** (default): encodes writes as DNS queries that the
   authoritative server interprets as writes. This matches the rendezvous-name
   scheme above and keeps DNS purely a request/response channel.
-- **`DynUpdate`** (optional): an RFC 2136 dynamic-update backend for environments
-  that run a real authoritative server accepting `DNSUPDATE` messages.
+- **`DynUpdate`** (in progress): configuration for an authenticated RFC 2136 backend.
+  Publish and Poll require issues #42 and #43. See [DynUpdate configuration](docs/dynupdate.md).
 - **HTTPS** (optional): a `sig.Transport` backed by an ordinary HTTPS
   `http.Handler` for environments where unsolicited DNS queries are dropped by a
   firewall or ISP. The same room/kind addressing applies, but the whole SDP is
