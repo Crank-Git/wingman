@@ -167,7 +167,8 @@ Add the same TURN settings to **both** peer commands:
 Run each peer separately. Wait for both connections, then exchange messages.
 Pion gathers relay candidates and can use TURN when direct connectivity fails.
 The `--metrics` output reports gathered candidate types. A relay candidate alone does not prove that traffic uses the relay.
-The CLI has no forced-relay option. The namespace suite tests direct WebRTC; it does not prove a forced TURN path.
+The CLI reports both selected candidate types after connection.
+The namespace relay scenario blocks host paths and requires `local=relay remote=relay` at both peers.
 
 Review these ports before deployment:
 
@@ -210,7 +211,7 @@ bash scripts/namespace-smoke.sh --scenario all
 ```
 
 The wrapper builds Linux binaries for the daemon architecture and one pinned fixture image.
-It runs `dns`, `readiness`, and `two-peer` sequentially in separate disposable containers.
+It runs `dns`, `readiness`, `two-peer`, and `relay` sequentially in separate disposable containers.
 Select any one scenario with `--scenario`.
 Runtime uses `--network=none` and read-only repository and binary mounts.
 The wrapper never mounts the Docker socket or uses host networking.
@@ -224,19 +225,27 @@ Each container creates a private bridge with these namespaces:
 | `peer-b` | `10.203.0.3` | Answer CLI or protocol probe. |
 
 The capability probe first tests `NET_ADMIN` and `SYS_ADMIN`.
-If it fails, the wrapper tests a privileged disposable container. A failed second probe fails acceptance.
+If it fails, the wrapper tests a privileged disposable container. A failed second probe reports a prerequisite skip with exit 77.
+Missing Docker, Go, or a Linux daemon also reports a skip. A skip cannot satisfy acceptance.
 The fixture never changes host namespaces or firewall rules.
 DNS tests signed UDP/TCP and rejects unsigned, wrong-key, and wrong-zone requests.
 Readiness tests trusted TLS probes, authenticated signaling, and server shutdown.
 The two-peer scenario starts actual `serve`, `offer`, and `answer` processes with a restricted TSIG file.
 Both FIFO inputs stay open until both peers connect and receive each other's unique message.
 The scenario then sends EOF, joins both peers, sends SIGTERM to the server, and joins it.
-Cleanup removes the bridge, namespaces, container, and temporary binaries, including after a failure.
+The relay scenario uses the same lifecycle with a restricted TURN password file and the local TURN server on port 3478.
+Run it separately with `bash scripts/namespace-smoke.sh --scenario relay`.
+Private routes block each peer from the other peer address.
+Server policy rules allow DNS and TURN control replies, then prohibit relay sockets from the peer host addresses.
+Both peers must receive the known text and report `selected pair: local=relay remote=relay`.
+Missing statistics or another selected type fails the scenario.
+Cleanup removes children, credentials, logs, rooms, bridge, namespaces, container, and temporary binaries after success or failure.
+The server owns rooms in memory; its exit removes them.
 
 Output records the base digest, fixture image ID, architecture, capability result, scenario results, and cleanup result.
 `BUILDX_CONFIG` can select a writable Buildx directory. The default is temporary.
 Set `GOCACHE` to a writable temporary directory if the normal Go cache is restricted.
-CI runs this aggregate command after full verification. Missing capabilities fail the job; they do not skip acceptance.
+CI runs this aggregate command after full verification. A prerequisite skip exits 77 and cannot pass the job.
 
 Interface references: [Docker container run](https://docs.docker.com/reference/cli/docker/container/run/),
 [Pion TURN v5.1.3](https://pkg.go.dev/github.com/pion/turn/v5@v5.1.3),
