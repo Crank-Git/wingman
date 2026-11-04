@@ -102,7 +102,7 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `wingman - WebRTC signaling over DNS
 
 Usage:
-  wingman serve                      start a local DNS signaling server
+  wingman serve --local-demo         start a local DNS signaling server
   wingman offer  [flags]             run the offerer: create a data channel, then type messages
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
 
