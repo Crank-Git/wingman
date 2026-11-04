@@ -1,6 +1,7 @@
 package dns
 
 import (
+	"bytes"
 	"context"
 	"net"
 	"sort"
@@ -18,15 +19,21 @@ import (
 // TXT records. It is safe for concurrent use.
 type Server struct {
 	mu    sync.Mutex
-	frags map[string]map[uint16]sig.Fragment // key: room + "/" + kind
-	dns   *dns.Server                        // UDP
-	tcp   *dns.Server                        // TCP
+	frags map[storageKey]map[uint16]sig.Fragment // mu guards all entries and fragments.
+	dns   *dns.Server                            // UDP
+	tcp   *dns.Server                            // TCP
 	addr  string
+}
+
+type storageKey struct {
+	zone string
+	room string
+	kind sig.Kind
 }
 
 // NewServer returns an empty Server.
 func NewServer() *Server {
-	return &Server{frags: make(map[string]map[uint16]sig.Fragment)}
+	return &Server{frags: make(map[storageKey]map[uint16]sig.Fragment)}
 }
 
 // Addr returns the listener address (valid after Start).
@@ -75,17 +82,34 @@ func (s *Server) makeHandler(truncateSize int) dns.HandlerFunc {
 // handle routes an incoming query to fragment-store or poll logic. truncateSize
 // is the maximum response size for this transport (0 disables truncation).
 func (s *Server) handle(w dns.ResponseWriter, req *dns.Msg, truncateSize int) {
-	if len(req.Question) == 0 {
+	if len(req.Question) != 1 || req.Question[0].Qtype != dns.TypeTXT || req.Question[0].Qclass != dns.ClassINET {
 		_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
 		return
 	}
-	name := strings.TrimSuffix(req.Question[0].Name, ".")
+	name := strings.ToLower(strings.TrimSuffix(req.Question[0].Name, "."))
+	if !validName(name) {
+		_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
+		return
+	}
 
 	if parsed, err := sig.ParseRendezvousName(name); err == nil {
 		s.storeFragment(w, req, parsed)
 		return
 	}
 	s.respondPoll(w, req, name, truncateSize)
+}
+
+func validName(name string) bool {
+	// The root terminator and the first label length add two wire octets.
+	if len(name)+2 > 255 || strings.Contains(name, "\\") || strings.TrimSpace(name) != name {
+		return false
+	}
+	for _, label := range strings.Split(name, ".") {
+		if len(label) == 0 || len(label) > 63 {
+			return false
+		}
+	}
+	return true
 }
 
 // storeFragment stores a fragment received via a write query and acks it.
@@ -98,9 +122,16 @@ func (s *Server) storeFragment(w dns.ResponseWriter, req *dns.Msg, parsed sig.Pa
 	}
 
 	frag := sig.Fragment{Seq: parsed.Seq, Total: parsed.Total, Data: payload}
-	key := parsed.Room + "/" + parsed.Kind.String()
+	key := storageKey{zone: parsed.Zone, room: parsed.Room, kind: parsed.Kind}
 
 	s.mu.Lock()
+	for seq, stored := range s.frags[key] {
+		if stored.Total != frag.Total || (seq == frag.Seq && !bytes.Equal(stored.Data, frag.Data)) {
+			s.mu.Unlock()
+			_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
+			return
+		}
+	}
 	if s.frags[key] == nil {
 		s.frags[key] = make(map[uint16]sig.Fragment)
 	}
@@ -123,17 +154,17 @@ func (s *Server) respondPoll(w dns.ResponseWriter, req *dns.Msg, name string, tr
 	fields := strings.Split(name, ".")
 	// poll name: room.kind.sig.<zone...>
 	if len(fields) < 4 || fields[2] != sig.SigLabel {
-		_ = w.WriteMsg(setRcode(req, dns.RcodeNameError))
+		_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
 		return
 	}
 	room := fields[0]
 	kind, err := sig.ParseKind(fields[1])
 	if err != nil {
-		_ = w.WriteMsg(setRcode(req, dns.RcodeNameError))
+		_ = w.WriteMsg(setRcode(req, dns.RcodeFormatError))
 		return
 	}
 	zone := strings.Join(fields[3:], ".")
-	key := room + "/" + kind.String()
+	key := storageKey{zone: zone, room: room, kind: kind}
 
 	s.mu.Lock()
 	stored := s.frags[key]
