@@ -4,7 +4,6 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-go mod tidy
 go vet ./...
 
 go test ./... -coverprofile=/tmp/wingman-cover.out
