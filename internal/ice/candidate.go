@@ -105,7 +105,16 @@ type Candidate struct {
 // comes from Preference(); localPreference is an agent-chosen weight in
 // [0, 65535] that breaks ties among same-type candidates (higher is better and
 // SHOULD be unique per type/component); component is normally 1.
-func CandidatePriority(typePreference, localPreference, component uint16) uint32 {
+// If component is outside 1 through 256, it returns zero and a validation error.
+func CandidatePriority(typePreference, localPreference, component uint16) (uint32, error) {
+	if component < 1 || component > 256 {
+		return 0, fmt.Errorf("ice: compute candidate priority: component %d is outside 1 through 256", component)
+	}
+	return candidatePriority(typePreference, localPreference, component), nil
+}
+
+// candidatePriority requires a component from 1 through 256.
+func candidatePriority(typePreference, localPreference, component uint16) uint32 {
 	return (1<<24)*uint32(typePreference) +
 		(1<<8)*uint32(localPreference) +
 		(256 - uint32(component))
@@ -120,7 +129,8 @@ func NewHost(addr net.IP, port uint16, localPreference uint16) Candidate {
 		Address:   addr.String(),
 		Port:      port,
 		Component: 1,
-		Priority:  CandidatePriority(CandidateTypeHost.Preference(), localPreference, 1),
+		// Host candidates use component 1, so validation cannot fail.
+		Priority: candidatePriority(CandidateTypeHost.Preference(), localPreference, 1),
 	}
 }
 
