@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "pluginVersion": "0.1.2",
+  "pmModel": "gpt-6.1-sol",
+  "workerModel": "gpt-6.1-sol",
+  "workerEffort": "medium",
+  "helperModel": "gpt-6-luna",
+  "waitMs": 600000
+}
