@@ -38,7 +38,8 @@ type doctorReport struct {
 }
 type doctorOptions struct {
 	peerOpts
-	timeout time.Duration
+	timeout    time.Duration
+	jsonOutput bool
 }
 type doctorStage struct {
 	name string
@@ -65,6 +66,7 @@ func parseDoctorFlags(args []string) (doctorOptions, error) {
 	fs.StringVar(&opts.signalingSecretFile, "signaling-secret-file", "", "restricted HTTPS token file")
 	fs.BoolVar(&opts.allowLoopbackHTTP, "signaling-allow-loopback-http", false, "permit loopback HTTP")
 	fs.DurationVar(&opts.timeout, "timeout", 5*time.Second, "positive probe deadline; cleanup permits one additional second")
+	fs.BoolVar(&opts.jsonOutput, "json", false, "emit version 1 JSON results")
 	if err := fs.Parse(args); err != nil {
 		return opts, err
 	}
@@ -90,7 +92,7 @@ func parseDoctorFlags(args []string) (doctorOptions, error) {
 
 func runDoctor(ctx context.Context, args []string) error {
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
-		_, err := fmt.Fprintln(os.Stdout, "doctor mutates only a random disposable probe room. Use --signaling dns|dynupdate|https with its endpoint and credential flags. --timeout defaults to 5s; supported cleanup permits at most one additional second.")
+		_, err := fmt.Fprintln(os.Stdout, "doctor mutates only a random disposable probe room. Use --signaling dns|dynupdate|https with its endpoint and credential flags. --timeout defaults to 5s; supported cleanup permits at most one additional second. --json emits version 1 results; exit 0 means every applicable check passes.")
 		return err
 	}
 	opts, err := parseDoctorFlags(args)
@@ -98,7 +100,11 @@ func runDoctor(ctx context.Context, args []string) error {
 		return err
 	}
 	report := executeDoctor(ctx, opts)
-	if err := writeDoctorReport(os.Stdout, report); err != nil {
+	render := writeDoctorReport
+	if opts.jsonOutput {
+		render = writeDoctorJSON
+	}
+	if err := render(os.Stdout, report); err != nil {
 		return err
 	}
 	if !report.Success {
@@ -250,13 +256,4 @@ func probeDoctor(parent context.Context, plan doctorPlan, timeout time.Duration,
 		report.Success = report.Success && check.Success
 	}
 	return report
-}
-
-func writeDoctorReport(w io.Writer, report doctorReport) error {
-	for _, check := range report.Checks {
-		if _, err := fmt.Fprintf(w, "%s success=%t duration_ms=%d error_code=%s %s\n", check.Name, check.Success, check.DurationMS, check.ErrorCode, check.Correction); err != nil {
-			return err
-		}
-	}
-	return nil
 }

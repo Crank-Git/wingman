@@ -672,6 +672,7 @@ func TestCLIExec(t *testing.T) {
 	}
 	t.Run("DynUpdate rejects invalid configuration", func(t *testing.T) { checkDynUpdateCLI(t, bin) })
 	t.Run("DynUpdate cleanup recovers a room", func(t *testing.T) { checkDynUpdateCleanupCLI(t, bin) })
+	t.Run("Doctor reports process results", func(t *testing.T) { checkDoctorOutputCLI(t, bin) })
 
 	// help should exit 0 and print the usage banner.
 	helpCmd := exec.Command(bin, "help")
