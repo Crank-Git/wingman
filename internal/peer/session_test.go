@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,60 @@ import (
 	"github.com/Crank-Git/wingman/internal/metrics"
 	"github.com/Crank-Git/wingman/internal/sig"
 )
+
+type candidateCallbackPC struct {
+	peerConn
+	callback func(*webrtc.ICECandidate)
+}
+
+func (p *candidateCallbackPC) Close() error                                             { return nil }
+func (p *candidateCallbackPC) OnConnectionStateChange(func(webrtc.PeerConnectionState)) {}
+func (p *candidateCallbackPC) OnDataChannel(func(*webrtc.DataChannel))                  {}
+func (p *candidateCallbackPC) OnICECandidate(h func(*webrtc.ICECandidate)) {
+	p.callback = h
+}
+func (p *candidateCallbackPC) CreateDataChannel(string, *webrtc.DataChannelInit) (*webrtc.DataChannel, error) {
+	return nil, errors.New("stop after callback registration")
+}
+
+func TestConcurrentCollectorUpdatesRecordCandidates(t *testing.T) {
+	pc := &candidateCallbackPC{}
+	saved := newPeerConnection
+	newPeerConnection = func(webrtc.Configuration) (peerConn, error) { return pc, nil }
+	t.Cleanup(func() { newPeerConnection = saved })
+	s := NewSession(RoleOfferer, Config{})
+	if _, err := s.Start(context.Background()); err == nil {
+		t.Fatal("Start must report the fake connection error")
+	}
+	first, second := metrics.New(), metrics.New()
+	pc.callback(&webrtc.ICECandidate{Typ: webrtc.ICECandidateTypeHost})
+	pc.callback(nil)
+	s.WithMetrics(first)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10000; i++ {
+			s.WithMetrics(second)
+			s.WithMetrics(nil)
+			s.WithMetrics(first)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10000; i++ {
+			pc.callback(&webrtc.ICECandidate{Typ: webrtc.ICECandidateTypeHost})
+			pc.callback(nil)
+		}
+	}()
+	wg.Wait()
+	before := first.Candidates()["host"]
+	s.WithMetrics(first)
+	pc.callback(&webrtc.ICECandidate{Typ: webrtc.ICECandidateTypeHost})
+	if got := first.Candidates()["host"]; got != before+1 {
+		t.Fatalf("host count = %d, want %d", got, before+1)
+	}
+}
 
 // retryingTransport wraps a Transport so that Poll retries on sig.ErrNotFound
 // until the message appears or ctx is cancelled. StubTransport returns
@@ -153,6 +208,12 @@ func TestSessionEndToEndDNS(t *testing.T) {
 	answerer.OnMessage(func(data []byte) { got <- string(data) })
 
 	runHandshake(t, ctx, offerer, answerer)
+
+	for _, s := range []*Session{offerer, answerer} {
+		if _, err := s.Start(ctx); err == nil || !strings.Contains(err.Error(), "already started") {
+			t.Fatalf("repeat Start error = %v, want already started", err)
+		}
+	}
 
 	offerDC, ok := offerer.DataChannel()
 	if !ok {
@@ -480,7 +541,7 @@ func TestSessionRecordsGatheredCandidates(t *testing.T) {
 		zone = "example.com"
 	)
 
-	m := metrics.New()
+	m := &metrics.Metrics{}
 	offerer := NewSession(RoleOfferer, Config{
 		Room: room, Zone: zone,
 		Transport: newTestTransport(srv.Addr(), zone), Label: "wingman",
@@ -495,6 +556,9 @@ func TestSessionRecordsGatheredCandidates(t *testing.T) {
 	cands := m.Candidates()
 	if cands["host"] == 0 {
 		t.Fatalf("host candidates not recorded during run: %v", cands)
+	}
+	if !strings.Contains(m.Text(), "# TYPE wingman_candidates_host counter\nwingman_candidates_host ") {
+		t.Fatalf("handshake metrics omit host candidates: %s", m.Text())
 	}
 }
 

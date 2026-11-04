@@ -73,14 +73,9 @@ func GatherHostCandidates(ctx context.Context, networks []string, localPreferenc
 			// / ::1) is a legitimate direct host path and is kept.
 			return
 		}
-		c := Candidate{
-			Type:      CandidateTypeHost,
-			Network:   network,
-			Address:   addr.String(),
-			Port:      0,
-			Component: 1,
-			Priority:  CandidatePriority(CandidateTypeHost.Preference(), localPreference, 1),
-		}
+		// Port zero records address inventory. Pion allocates negotiation candidates separately.
+		c := NewHost(addr, 0, localPreference)
+		c.Network = network
 		if _, ok := seen[c.Key()]; ok {
 			return
 		}

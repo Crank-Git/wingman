@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -43,6 +44,8 @@ const defaultZone = "example.com"
 
 // defaultDialTimeout bounds a single DNS exchange for a peer.
 const defaultDialTimeout = 5 * time.Second
+
+const defaultHandshakeTimeout = 30 * time.Second
 
 // defaultPollInterval is the delay between poll attempts while a peer waits for
 // the other side's SDP.
@@ -116,6 +119,7 @@ offer/answer flags:
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
   --metrics               print connection metrics (Prometheus format) on exit
+  --handshake-timeout D    positive handshake duration (default "30s")
 
 serve flags:
   --zone example.com      authoritative DNS zone this server serves
@@ -198,6 +202,7 @@ type peerOpts struct {
 	user              string
 	pass              string
 	metrics           bool
+	handshakeTimeout  time.Duration
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
@@ -217,11 +222,15 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	user := fs.String("user", "", "TURN username for --turn servers")
 	pass := fs.String("pass", "", "TURN password for --turn servers")
 	metricsFlag := fs.Bool("metrics", false, "print connection metrics (Prometheus format) on exit")
+	handshakeTimeout := fs.Duration("handshake-timeout", defaultHandshakeTimeout, "positive handshake duration")
 	if err := fs.Parse(args); err != nil {
 		return peerOpts{}, err
 	}
 	if *room == "" {
 		return peerOpts{}, fmt.Errorf("%s: --room is required", name)
+	}
+	if *handshakeTimeout <= 0 {
+		return peerOpts{}, fmt.Errorf("%s: --handshake-timeout must be positive", name)
 	}
 	if *signaling == "dns" && *addr == "" {
 		return peerOpts{}, fmt.Errorf("%s: --addr is required for --signaling dns", name)
@@ -234,13 +243,14 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
 		allowLoopbackHTTP: *allowLoopbackHTTP,
 		turn:              turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		handshakeTimeout: *handshakeTimeout,
 	}, nil
 }
 
 // runPeer builds the signaling transport and ICE servers from opts, connects a
 // session for the given role (recording metrics), and runs the send/receive
 // loop. It prints the metrics snapshot when opts.metrics is set.
-func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) error {
+func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) (err error) {
 	transport, err := buildTransport(opts)
 	if err != nil {
 		return err
@@ -250,21 +260,41 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		return err
 	}
 	m := metrics.New()
-	sess, err := startSession(ctx, role, peer.Config{
+	timeout := opts.handshakeTimeout
+	if timeout == 0 {
+		timeout = defaultHandshakeTimeout
+	}
+	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
+	sess, err := startSession(handshakeCtx, role, peer.Config{
 		Room:       opts.room,
 		Zone:       opts.zone,
 		Transport:  transport,
 		ICEServers: iceServers,
 		Label:      opts.label,
 	}, m)
+	cancel()
 	if err != nil {
 		return err
 	}
+	defer func() {
+		err = closePeerSession(sess.Close, err)
+	}()
 	err = chat(ctx, sess, role, in, out)
 	if opts.metrics {
 		fmt.Fprint(out, m.Text())
 	}
 	return err
+}
+
+func closePeerSession(closeSession func() error, result error) error {
+	closeErr := closeSession()
+	if result != nil {
+		return result
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close session: %w", closeErr)
+	}
+	return nil
 }
 
 // startSession creates a session for role with cfg, runs the handshake, and
@@ -277,6 +307,17 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 	if _, err := sess.Start(ctx); err != nil {
 		m.ConnectionFailed()
 		m.Failure()
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			cause := ctx.Err()
+			// Socket deadlines can expire before the context timer callback runs.
+			if deadline, ok := ctx.Deadline(); cause == nil && ok && !time.Now().Before(deadline) {
+				cause = context.DeadlineExceeded
+			}
+			if cause != nil {
+				err = errors.Join(err, cause)
+			}
+		}
 		return nil, err
 	}
 	m.ConnectionSucceeded()

@@ -3,11 +3,13 @@ package dns
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/miekg/dns"
@@ -26,6 +28,8 @@ type Server struct {
 	limits        storageLimits // Set limits before Start or requests.
 	now           func() time.Time
 	newTicker     func(time.Duration) (<-chan time.Time, func()) // Set clock hooks before Start or requests.
+	listenPacket  func(string, string) (net.PacketConn, error)   // Set bind hooks before Start.
+	listenTCP     func(string, string) (net.Listener, error)
 
 	lifecycleMu sync.Mutex // lifecycleMu guards listeners, address, and lifecycle channels.
 	dns         *dns.Server
@@ -36,6 +40,8 @@ type Server struct {
 }
 
 const fragmentLifetime = 120 * time.Second
+
+const listenerPairAttempts = 10
 
 type fragmentEntry struct {
 	createdAt time.Time
@@ -52,9 +58,11 @@ type storageKey struct {
 // NewServer returns an empty Server.
 func NewServer() *Server {
 	return &Server{
-		frags:  make(map[storageKey]*fragmentEntry),
-		limits: defaultStorageLimits(),
-		now:    time.Now,
+		frags:        make(map[storageKey]*fragmentEntry),
+		limits:       defaultStorageLimits(),
+		now:          time.Now,
+		listenPacket: net.ListenPacket,
+		listenTCP:    net.Listen,
 		newTicker: func(interval time.Duration) (<-chan time.Time, func()) {
 			ticker := time.NewTicker(interval)
 			return ticker.C, ticker.Stop
@@ -72,6 +80,7 @@ func (s *Server) Addr() string {
 // Start serves DNS on UDP and TCP listeners at the same loopback address.
 // Context cancellation stops the listeners and the one-second expiry sweep.
 // Entries expire 120 seconds after their first fragment arrives.
+// Start tries at most ten UDP ports if TCP reports an address collision.
 // Call Stop before another Start. Start returns listener setup errors.
 func (s *Server) Start(ctx context.Context) error {
 	s.lifecycleMu.Lock()
@@ -79,17 +88,11 @@ func (s *Server) Start(ctx context.Context) error {
 	if s.stop != nil {
 		return fmt.Errorf("start DNS server: call Stop before another Start")
 	}
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	pc, tcpLn, err := s.listenPair()
 	if err != nil {
-		return fmt.Errorf("listen DNS UDP: %w", err)
+		return err
 	}
-	addr := pc.LocalAddr().(*net.UDPAddr)
-	tcpLn, err := net.Listen("tcp", addr.String())
-	if err != nil {
-		_ = pc.Close()
-		return fmt.Errorf("listen DNS TCP: %w", err)
-	}
-	s.addr = addr.String()
+	s.addr = pc.LocalAddr().String()
 	s.dns = &dns.Server{PacketConn: pc, Handler: s.makeHandler(edns0UDPSize)}
 	s.tcp = &dns.Server{Listener: tcpLn, Handler: s.makeHandler(dns.MaxMsgSize)}
 
@@ -107,6 +110,26 @@ func (s *Server) Start(ctx context.Context) error {
 	ticks, stopTicker := s.newTicker(time.Second)
 	go s.run(ctx, ticks, stopTicker)
 	return nil
+}
+
+func (s *Server) listenPair() (net.PacketConn, net.Listener, error) {
+	for attempt := 1; ; attempt++ {
+		pc, err := s.listenPacket("udp", "127.0.0.1:0")
+		if err != nil {
+			return nil, nil, fmt.Errorf("listen DNS UDP: %w", err)
+		}
+		ln, err := s.listenTCP("tcp", pc.LocalAddr().String())
+		if err == nil {
+			return pc, ln, nil
+		}
+		// UDP can select a port that TCP already uses.
+		if closeErr := pc.Close(); closeErr != nil {
+			return nil, nil, errors.Join(fmt.Errorf("listen DNS TCP: %w", err), fmt.Errorf("close DNS UDP: %w", closeErr))
+		}
+		if !errors.Is(err, syscall.EADDRINUSE) || attempt == listenerPairAttempts {
+			return nil, nil, fmt.Errorf("listen DNS TCP: %w", err)
+		}
+	}
 }
 
 func activateListener(server *dns.Server) error {

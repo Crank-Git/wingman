@@ -64,6 +64,14 @@ latency low the negative-caching (SOA minimum) TTL is kept at 0–1 s, and peers
 query the authoritative server directly to avoid recursive-resolver negative
 caching. See `internal/sig`.
 
+### Handshake timeout
+
+The `offer` and `answer` commands limit the handshake to 30 seconds.
+Use `--handshake-timeout 90s` for a slower network.
+The option accepts a positive Go duration, such as `500ms`, `30s`, or `1m30s`.
+If the deadline expires, the command closes the Session and reports the cause.
+After the handshake succeeds, chat continues until normal exit.
+
 ### TURN / STUN (NAT traversal)
 
 Host candidates only reach a direct P2P connection when the peers are on the
