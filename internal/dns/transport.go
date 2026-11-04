@@ -47,6 +47,7 @@ func (t *WriteOverQuery) withDefaults() *WriteOverQuery {
 }
 
 // Publish fragments msg and writes each fragment as a DNS query.
+// If ctx is cancelled, Publish returns its error before the next resolver call.
 func (t *WriteOverQuery) Publish(ctx context.Context, room string, k sig.Kind, msg []byte) error {
 	t.withDefaults()
 	frags, err := sig.Fragments(msg, 0)
@@ -72,6 +73,9 @@ func (t *WriteOverQuery) writeFragment(ctx context.Context, name string) error {
 	m.SetQuestion(dns.Fqdn(name), dns.TypeTXT)
 	m.SetEdns0(edns0UDPSize, false)
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	resp, err := t.Resolver.Exchange(ctx, m)
 	if err != nil {
 		return err
