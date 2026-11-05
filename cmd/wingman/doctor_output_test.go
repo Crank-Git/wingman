@@ -94,6 +94,7 @@ func TestDoctorRendersStageCorrections(t *testing.T) {
 
 func checkDoctorOutputCLI(t *testing.T, bin string) {
 	t.Helper()
+	checkDoctorMalformedAddressCLI(t, bin)
 	srv, err := startServe()
 	if err != nil {
 		t.Fatal(err)
@@ -127,6 +128,41 @@ func checkDoctorOutputCLI(t *testing.T, bin string) {
 				t.Fatalf("%s", out)
 			}
 			if report.Checks[0].Name != "dns_udp" || report.Checks[1].Name != "dns_tcp" {
+				t.Fatalf("%s", out)
+			}
+		})
+	}
+}
+
+func checkDoctorMalformedAddressCLI(t *testing.T, bin string) {
+	t.Helper()
+	for _, structured := range []bool{false, true} {
+		t.Run("malformed-json="+boolJSON(structured), func(t *testing.T) {
+			args := []string{"doctor", "--addr", "not-an-endpoint", "--timeout", "100ms"}
+			if structured {
+				args = append(args, "--json")
+			}
+			out, err := exec.Command(bin, args...).CombinedOutput()
+			var exit *exec.ExitError
+			if !errors.As(err, &exit) || exit.ExitCode() == 0 {
+				t.Fatalf("exit: %v; output: %s", err, out)
+			}
+			if structured {
+				line := bytes.SplitN(out, []byte("\n"), 2)[0]
+				var report struct {
+					Success bool
+					Checks  []struct {
+						Name      string
+						ErrorCode string `json:"error_code"`
+					}
+				}
+				if err := json.Unmarshal(line, &report); err != nil {
+					t.Fatal(err)
+				}
+				if report.Success || len(report.Checks) != 1 || report.Checks[0].Name != "configuration" || report.Checks[0].ErrorCode != "configuration" {
+					t.Fatalf("%s", out)
+				}
+			} else if !strings.Contains(string(out), "configuration: FAIL") || !strings.Contains(string(out), "HOST:PORT") {
 				t.Fatalf("%s", out)
 			}
 		})
