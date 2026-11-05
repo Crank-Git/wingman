@@ -31,6 +31,8 @@ Doctor publishes probe data in a random disposable room. Use an endpoint that yo
 
    An unavailable endpoint returns a nonzero exit status. A silent endpoint reaches the deadline and reports `deadline_exceeded`.
 
-> **Known limitation:** A malformed address currently reports network probe failures. Use `HOST:PORT`, such as `127.0.0.1:5353`. See [R1, issue #120](https://github.com/Crank-Git/wingman/issues/120).
+A malformed DNS address returns a `configuration` result before doctor sends probes. Use `HOST:PORT`, such as `127.0.0.1:5353` or `[::1]:5353`.
+The host and port must be present. The port can be a number or a service name, such as `domain`.
+The text result explains the format. The JSON result reports `error_code: configuration`. Both commands exit with a nonzero status.
 
 For HTTPS, use the signaling URL and token file from the [HTTPS guide](https.md). The separate metrics listener does not provide signaling.

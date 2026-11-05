@@ -55,8 +55,8 @@ func writeDoctorReport(w io.Writer, report doctorReport) error {
 }
 
 func doctorCorrection(check doctorCheck) string {
-	// Cleanup identifies the generated room without copying endpoint or credential input.
-	if check.Name == "cleanup" && check.Correction != "" {
+	// These corrections contain fixed guidance or the generated room, rather than private input.
+	if (check.Name == "cleanup" || check.Name == "configuration") && check.Correction != "" {
 		return check.Correction
 	}
 	switch check.ErrorCode {

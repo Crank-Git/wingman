@@ -24,6 +24,8 @@ import (
 
 const doctorPayload = "wingman diagnostic probe"
 
+var errDoctorDNSAddress = errors.New("DNS endpoint requires HOST:PORT")
+
 type doctorCheck struct {
 	Name       string
 	Success    bool
@@ -116,7 +118,11 @@ func runDoctor(ctx context.Context, args []string) error {
 func executeDoctor(ctx context.Context, opts doctorOptions) doctorReport {
 	plan, err := buildDoctorPlan(opts)
 	if err != nil {
-		return doctorReport{Transport: opts.signaling, Checks: []doctorCheck{{Name: "configuration", ErrorCode: "configuration", Correction: "Check the selected endpoint and credential files."}}}
+		correction := "Check the selected endpoint and credential files."
+		if errors.Is(err, errDoctorDNSAddress) {
+			correction = "Set --addr to HOST:PORT, such as 127.0.0.1:5353 or [::1]:5353."
+		}
+		return doctorReport{Transport: opts.signaling, Checks: []doctorCheck{{Name: "configuration", ErrorCode: "configuration", Correction: correction}}}
 	}
 	return probeDoctor(ctx, plan, opts.timeout, doctorRoom)
 }
@@ -129,6 +135,15 @@ func doctorRoom() string {
 }
 
 func buildDoctorPlan(opts doctorOptions) (doctorPlan, error) {
+	if opts.signaling == "dns" || opts.signaling == "dynupdate" {
+		host, port, err := net.SplitHostPort(opts.addr)
+		if err != nil || host == "" || port == "" {
+			return doctorPlan{}, errDoctorDNSAddress
+		}
+		if _, err := net.LookupPort("tcp", port); err != nil {
+			return doctorPlan{}, errDoctorDNSAddress
+		}
+	}
 	tr, err := buildTransport(opts.peerOpts)
 	if err != nil {
 		return doctorPlan{}, err

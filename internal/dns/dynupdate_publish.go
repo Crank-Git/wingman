@@ -47,7 +47,7 @@ func (t *DynUpdate) Publish(ctx context.Context, room string, kind sig.Kind, msg
 	}
 	reply, err := t.Resolver.Exchange(ctx, m)
 	if err != nil {
-		return fmt.Errorf("DynUpdate publish exchange: %w", err)
+		return dynUpdateExchangeError("publish", err)
 	}
 	if reply == nil {
 		return errors.New("DynUpdate publish: nil resolver response")
