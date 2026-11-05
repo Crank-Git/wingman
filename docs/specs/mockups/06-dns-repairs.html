@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>DNS isolation and resource limits — proposed terminal</title><style>:root{color-scheme:light dark;font:16px/1.6 system-ui;background:light-dark(#f5f4ef,#10191b);color:light-dark(#183132,#d9eeeb)}body{max-width:900px;margin:6vh auto;padding:24px}small{letter-spacing:.15em}h1{font-size:clamp(28px,5vw,48px);line-height:1.1}section{background:light-dark(#fff,#182729);border:1px solid #63827c;border-radius:12px;padding:24px;margin-top:30px}code,pre{font-family:ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}b{color:light-dark(#25625b,#81cbb8)}p{border-bottom:1px solid #63827c;padding:12px 0}</style><body><small>WINGMAN / PROPOSED CLI EXPERIENCE</small><h1>DNS isolation and resource limits</h1><section><pre>$ wingman help
+DNS clients receive protocol errors. CLI stderr identifies validation, capacity, expiry, or cancellation failures.
+No browser screen applies.</pre></section><section><h2>Observable results</h2><p><b>01</b> The same room in two zones cannot read or overwrite the other zone.</p>
+<p><b>02</b> Unsupported questions leave the store unchanged.</p>
+<p><b>03</b> A clock-controlled test removes an idle entry after expiry.</p>
+<p><b>04</b> Capacity tests reject writes without exceeding configured bounds.</p>
+<p><b>05</b> Injected TXT names with another room, kind, or zone return an identity error.</p>
+<p><b>06</b> A cancelled publish performs no further resolver calls.</p></section><footer>Illustrative terminal states. Requirements define behavior. This page makes no network requests.</footer></body></html>

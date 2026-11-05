@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wingman</title>
+<style>
+:root { --bg:#ffffff; --fg:#1a1a24; --muted:#5a5a68; --line:#e3e3ea; --accent:#3452c8;
+        --card:#f6f6f9; --warn-bg:#fff7e8; --warn-line:#e8b34a; }
+@media (prefers-color-scheme: dark) {
+  :root { --bg:#14141b; --fg:#e8e8ee; --muted:#9a9aa8; --line:#2c2c38; --accent:#8ea6ff;
+          --card:#1c1c26; --warn-bg:#2a2318; --warn-line:#a87c2a; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+       font:16px/1.6 system-ui,-apple-system,sans-serif; }
+.layout { display:flex; min-height:100vh; }
+aside.site { width:17rem; flex:none; border-right:1px solid var(--line);
+             padding:1.2rem 1rem 3rem; position:sticky; top:0; height:100vh;
+             overflow-y:auto; background:var(--card); }
+aside.site h2 { font-size:.8rem; text-transform:uppercase; letter-spacing:.06em;
+                color:var(--muted); margin:1.2rem 0 .3rem; border:none; padding:0; }
+aside.site ul { list-style:none; margin:0; padding:0; }
+aside.site li { margin:.15rem 0; }
+aside.site a { text-decoration:none; color:var(--fg); font-size:.92rem;
+               display:block; padding:.15rem .5rem; border-radius:6px; }
+aside.site a:hover { background:var(--bg); }
+aside.site a.current { background:var(--accent); color:#fff; }
+aside.site a.sub { padding-left:1.3rem; font-size:.84rem; color:var(--muted); }
+aside.site .brand { font-weight:700; font-size:1.05rem; }
+main { max-width:60rem; margin:0 auto; padding:2rem 1.5rem 6rem; min-width:0; flex:1; }
+h1,h2,h3,h4 { line-height:1.25; }
+h1 { font-size:2rem; margin:.2rem 0; }
+h2 { border-bottom:1px solid var(--line); padding-bottom:.3rem; margin-top:2.5rem; }
+a { color:var(--accent); }
+code { background:var(--card); padding:.1em .35em; border-radius:4px; font-size:.9em; }
+pre.code { background:var(--card); border:1px solid var(--line); border-radius:8px;
+           padding:1rem; overflow-x:auto; }
+pre.code code { background:none; padding:0; }
+.table-wrap { overflow-x:auto; }
+table { border-collapse:collapse; margin:1rem 0; min-width:50%; }
+th,td { border:1px solid var(--line); padding:.4rem .7rem; text-align:left; }
+th { background:var(--card); }
+blockquote { border-left:3px solid var(--accent); margin:1rem 0; padding:.2rem 1rem;
+             color:var(--muted); }
+.meta { color:var(--muted); margin-bottom:2rem; }
+.badge { display:inline-block; padding:.1rem .6rem; border-radius:999px;
+         border:1px solid var(--accent); color:var(--accent); font-size:.85rem; }
+.diagram { background:var(--card); border:1px solid var(--line); border-radius:8px;
+           padding:1rem; margin:1rem 0; overflow-x:auto; }
+.diagram pre.mermaid { margin:0; }
+.diagram.raw::before { content:"diagram source (assets/mermaid.min.js not vendored)";
+                       display:block; color:var(--muted); font-size:.8rem;
+                       margin-bottom:.5rem; }
+.callout-h, .callout-h ~ p, .callout-h ~ ul { background:var(--warn-bg); }
+.callout-h { border-left:4px solid var(--warn-line); padding:.3rem .8rem; }
+.mockup { margin:1.5rem 0; }
+.mockup iframe { width:100%; height:32rem; border:1px solid var(--line);
+                 border-radius:8px; background:#fff; }
+nav.pager { display:flex; justify-content:space-between; margin-top:3rem;
+            border-top:1px solid var(--line); padding-top:1rem; }
+@media (max-width: 900px) {
+  .layout { display:block; }
+  aside.site { width:auto; height:auto; position:static; border-right:none;
+               border-bottom:1px solid var(--line); }
+}
+h1[id]:hover .rv-add, h2[id]:hover .rv-add, h3[id]:hover .rv-add,
+h4[id]:hover .rv-add { opacity:1; }
+.rv-add { opacity:0; margin-left:.5rem; font-size:.75rem; cursor:pointer;
+          border:1px solid var(--accent); color:var(--accent); background:none;
+          border-radius:6px; padding:0 .45rem; vertical-align:middle;
+          transition:opacity .15s; }
+.rv-comment { border:1px solid var(--warn-line); border-left-width:4px;
+              background:var(--warn-bg); border-radius:8px; padding:.6rem .9rem;
+              margin:.8rem 0; font-size:.92rem; }
+.rv-comment.rv-resolved { opacity:.6; border-left-color:var(--line); }
+.rv-comment .rv-head { display:flex; gap:.6rem; align-items:center;
+                       color:var(--muted); font-size:.8rem; margin-bottom:.3rem; }
+.rv-comment .rv-head button { font-size:.75rem; cursor:pointer; background:none;
+                              border:1px solid var(--line); border-radius:6px;
+                              color:var(--muted); padding:0 .4rem; }
+.rv-comment .rv-body { white-space:pre-wrap; }
+.rv-editor textarea { width:100%; min-height:5rem; background:var(--bg);
+                      color:var(--fg); border:1px solid var(--line);
+                      border-radius:6px; padding:.5rem; font:inherit; }
+.rv-editor .rv-actions { margin-top:.4rem; display:flex; gap:.5rem; }
+.rv-editor button { cursor:pointer; border-radius:6px; padding:.2rem .8rem;
+                    border:1px solid var(--accent); background:var(--accent);
+                    color:#fff; }
+.rv-editor button.rv-cancel { background:none; color:var(--accent); }
+#rv-toggle { position:fixed; right:1rem; bottom:1rem; z-index:60;
+             background:var(--accent); color:#fff; border:none; cursor:pointer;
+             border-radius:999px; padding:.5rem 1rem; font-size:.85rem;
+             box-shadow:0 2px 10px rgba(0,0,0,.2); }
+#rv-drawer { position:fixed; top:0; right:0; bottom:0; width:21rem; z-index:55;
+             background:var(--card); border-left:1px solid var(--line);
+             display:flex; flex-direction:column; transform:translateX(100%);
+             transition:transform .2s ease; box-shadow:-4px 0 16px rgba(0,0,0,.12); }
+body.rv-open #rv-drawer { transform:none; }
+body.rv-open .layout { padding-right:21rem; }
+#rv-drawer header { padding:.8rem 1rem .5rem; border-bottom:1px solid var(--line); }
+#rv-drawer header .rv-count { color:var(--muted); font-size:.8rem; }
+#rv-drawer .rv-compose { padding:.8rem 1rem; border-bottom:1px solid var(--line); }
+#rv-drawer .rv-compose label { display:block; font-size:.75rem;
+                               color:var(--muted); margin-bottom:.25rem; }
+#rv-drawer .rv-compose select { width:100%; margin-bottom:.4rem;
+             background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:6px; padding:.3rem; font:inherit; font-size:.85rem; }
+#rv-drawer .rv-compose textarea { width:100%; min-height:5.5rem;
+             background:var(--bg); color:var(--fg); border:1px solid var(--line);
+             border-radius:6px; padding:.5rem; font:inherit; font-size:.9rem; }
+#rv-drawer .rv-compose .rv-live { font-size:.72rem; color:var(--muted); }
+#rv-drawer .rv-list { flex:1; overflow-y:auto; padding:.6rem 1rem; }
+#rv-drawer .rv-item { border:1px solid var(--line); border-left:3px solid
+             var(--warn-line); border-radius:8px; padding:.45rem .6rem;
+             margin-bottom:.6rem; font-size:.82rem; cursor:pointer; }
+#rv-drawer .rv-item.rv-resolved { opacity:.55; border-left-color:var(--line); }
+#rv-drawer .rv-item .rv-where { color:var(--accent); font-size:.72rem; }
+#rv-drawer .rv-item .rv-meta { color:var(--muted); font-size:.72rem;
+                               display:flex; gap:.5rem; align-items:center; }
+#rv-drawer .rv-item .rv-meta button { font-size:.7rem; cursor:pointer;
+             background:none; border:1px solid var(--line); border-radius:5px;
+             color:var(--muted); padding:0 .35rem; }
+#rv-drawer .rv-item .rv-text { white-space:pre-wrap; margin:.15rem 0; }
+#rv-drawer footer { padding:.6rem 1rem; border-top:1px solid var(--line);
+                    display:flex; gap:.5rem; flex-wrap:wrap; }
+#rv-drawer footer button, #rv-drawer .rv-compose button {
+  cursor:pointer; border:1px solid var(--accent); background:none;
+  color:var(--accent); border-radius:6px; padding:.2rem .7rem; font-size:.8rem; }
+#rv-drawer .rv-compose button.rv-primary { background:var(--accent); color:#fff; }
+#rv-drawer .rv-otherpages { color:var(--muted); font-size:.75rem;
+                            margin:.4rem 0 0; }
+@media (max-width: 1200px) { body.rv-open .layout { padding-right:0; } }
+</style>
+</head>
+<body data-page="index" data-rvkey="wingman">
+<div class="layout">
+<aside class="site"><a class="brand" href="spec.html">Wingman</a>
+<h2>Spec</h2><ul>
+<li><a class="current" href="spec.html">Overview &amp; index</a></li>
+<li><a class="sub" href="#overview">Overview</a></li>
+<li><a class="sub" href="#terms">Terms</a></li>
+<li><a class="sub" href="#goals">Goals</a></li>
+<li><a class="sub" href="#non-goals">Non-goals</a></li>
+<li><a class="sub" href="#users-personas">Users &amp; personas</a></li>
+<li><a class="sub" href="#feature-map">Feature map</a></li>
+<li><a class="sub" href="#architecture-stack">Architecture &amp; stack</a></li>
+<li><a class="sub" href="#data-model">Data model</a></li>
+<li><a class="sub" href="#cross-cutting-concerns">Cross-cutting concerns</a></li>
+<li><a class="sub" href="#environments-config">Environments &amp; config</a></li>
+<li><a class="sub" href="#testing-strategy">Testing strategy</a></li>
+<li><a class="sub" href="#epics">Epics</a></li>
+<li><a class="sub" href="#milestones">Milestones</a></li>
+<li><a class="sub" href="#assumptions">Assumptions</a></li>
+<li><a class="sub" href="#risks-open-questions">Risks &amp; open questions</a></li>
+<li><a class="sub" href="#changelog">Changelog</a></li>
+<li><a class="sub" href="#issue-map">Issue map</a></li>
+<li><a class="sub" href="#supplemental-issues">Supplemental issues</a></li>
+</ul>
+<h2>Pages</h2><ul>
+<li><a href="html/page-audit.html">Repository audit and evidence</a></li>
+<li><a href="html/page-scaffold-proposal.html">Scaffold proposal</a></li>
+</ul>
+<h2>Features</h2><ul>
+<li><a href="html/feature-foundation.html">Foundation gaps</a></li>
+<li><a href="html/feature-framing.html">Signal framing and names</a></li>
+<li><a href="html/feature-dns-existing.html">DNS query transport</a></li>
+<li><a href="html/feature-peer-existing.html">Peer handshake and chat</a></li>
+<li><a href="html/feature-https-existing.html">HTTPS fallback transport</a></li>
+<li><a href="html/feature-ops-existing.html">TURN and metrics</a></li>
+<li><a href="html/feature-dns-repairs.html">DNS isolation and resource limits</a></li>
+<li><a href="html/feature-https-repairs.html">HTTPS safety and atomic consumption</a></li>
+<li><a href="html/feature-peer-repairs.html">Peer lifecycle and metric correctness</a></li>
+<li><a href="html/feature-server-operations.html">Deployable servers and authentication</a></li>
+<li><a href="html/feature-dynupdate.html">RFC 2136 DynUpdate transport</a></li>
+<li><a href="html/feature-diagnostics.html">Diagnostics and network verification</a></li>
+</ul></aside>
+<main>
+<p class="meta"><span class="badge">approved</span> &nbsp; created 2026-11-04 &nbsp; rendered 2026-11-04</p>
+<h1>Wingman</h1>
+<h1 id="wingman">Wingman</h1>
+<h2 id="overview">Overview</h2>
+<p>Wingman exchanges WebRTC session descriptions through DNS or an HTTP fallback. After the handshake, WebRTC carries the peer data directly or through TURN.</p>
+<p>The project serves developers, operators, end users, and people who experiment with network protocols. This inheritance records the existing implementation before repairs.</p>
+<p>The operator requests fixes first, followed by useful additions. The roadmap implements the advertised RFC 2136 DynUpdate backend.</p>
+<h2 id="terms">Terms</h2>
+<div class="table-wrap"><table>
+<tr><th>Term</th><th>Part of speech</th><th>Meaning in this project</th><th>Do not use</th></tr>
+<tr><td>peer</td><td>noun</td><td>One participant in a WebRTC connection</td><td>node</td></tr>
+<tr><td>room</td><td>noun</td><td>A single-label rendezvous identifier shared by peers</td><td>channel ID</td></tr>
+<tr><td>zone</td><td>noun</td><td>The configured DNS suffix for signaling names</td><td>domain namespace</td></tr>
+<tr><td>kind</td><td>noun</td><td>The offer or answer direction</td><td>message role</td></tr>
+<tr><td>fragment</td><td>noun</td><td>A sequence-numbered portion of a message</td><td>packet chunk</td></tr>
+<tr><td>message</td><td>noun</td><td>Serialized SDP bytes sent through a transport</td><td>document</td></tr>
+<tr><td>SDP</td><td>noun</td><td>Session Description Protocol data used by WebRTC</td><td>session blob</td></tr>
+<tr><td>DNS</td><td>noun</td><td>Domain Name System</td><td>name network</td></tr>
+<tr><td>ICE</td><td>noun</td><td>Interactive Connectivity Establishment</td><td>NAT engine</td></tr>
+<tr><td>STUN</td><td>noun</td><td>Session Traversal Utilities for NAT</td><td>reflection service</td></tr>
+<tr><td>TURN</td><td>noun</td><td>Traversal Using Relays around NAT</td><td>proxy tunnel</td></tr>
+<tr><td>NAT</td><td>noun</td><td>Network Address Translation</td><td>address firewall</td></tr>
+<tr><td>TLS</td><td>noun</td><td>Transport Layer Security</td><td>SSL</td></tr>
+<tr><td>TSIG</td><td>noun</td><td>DNS transaction signature with a shared secret</td><td>encrypted DNS</td></tr>
+<tr><td>RRset</td><td>noun</td><td>DNS records with the same owner, class, and type</td><td>record group</td></tr>
+<tr><td>SOA</td><td>noun</td><td>DNS Start of Authority record</td><td>zone header</td></tr>
+<tr><td>TXT</td><td>noun</td><td>DNS text record type</td><td>text packet</td></tr>
+<tr><td>CRC32</td><td>noun</td><td>The existing 32-bit corruption checksum</td><td>authentication code</td></tr>
+<tr><td>URI</td><td>noun</td><td>Uniform Resource Identifier for a STUN or TURN service</td><td>server string</td></tr>
+<tr><td>CLI</td><td>noun</td><td>Command-line interface</td><td>app screen</td></tr>
+<tr><td>CI</td><td>noun</td><td>Continuous integration checks on GitHub</td><td>deploy service</td></tr>
+<tr><td>Session</td><td>noun</td><td>The internal peer object that owns one connection</td><td>reusable client</td></tr>
+<tr><td>transport</td><td>noun</td><td>Publish and Poll implementation</td><td>backend channel</td></tr>
+<tr><td>WriteOverQuery</td><td>noun</td><td>The custom fragment query transport</td><td>DNS UPDATE</td></tr>
+<tr><td>DynUpdate</td><td>noun</td><td>Planned RFC 2136 transport</td><td>provider dyndns API</td></tr>
+<tr><td>candidate</td><td>noun</td><td>An address offered for ICE negotiation</td><td>selected route</td></tr>
+<tr><td>selected pair</td><td>noun</td><td>The candidate pair that carries peer traffic</td><td>gathered pair</td></tr>
+<tr><td>publish</td><td>verb</td><td>Store a signaling message through a transport</td><td>broadcast</td></tr>
+<tr><td>poll</td><td>verb</td><td>Request a signaling message until available</td><td>subscribe</td></tr>
+<tr><td>cleanup</td><td>noun</td><td>Explicit removal of room records</td><td>cache expiry</td></tr>
+<tr><td>operator</td><td>noun</td><td>The person who configures a signaling service</td><td>account admin</td></tr>
+<tr><td>epic</td><td>noun</td><td>One independently mergeable batch of planned work</td><td>phase ticket</td></tr>
+<tr><td>built</td><td>adjective</td><td>Observed in code, including documented limitations</td><td>verified production-ready</td></tr>
+</table></div>
+<h2 id="goals">Goals</h2>
+<ul>
+<li>Repair isolated storage, resource limits, and message consumption before remote deployment.
+</li>
+<li>Preserve successful WebRTC message exchange through every supported transport.
+</li>
+<li>Maintain at least 95% aggregate statement coverage.
+</li>
+<li>Pass concurrency checks for the documented concurrent APIs.
+</li>
+<li>Complete an authenticated RFC 2136 exchange against a real authoritative test server.
+</li>
+<li>Provide a reproducible local demo and actionable diagnostics.
+</li>
+</ul>
+<h2 id="non-goals">Non-goals</h2>
+<ul>
+<li>Browser UI, video calls, file transfer, and port forwarding are outside this roadmap.
+</li>
+<li>DNS does not carry application data after the handshake.
+</li>
+<li>This release does not guarantee access through every restrictive network.
+</li>
+<li>The plan does not provision paid services or operate a public relay.
+</li>
+</ul>
+<h2 id="users-personas">Users &amp; personas</h2>
+<div class="table-wrap"><table>
+<tr><th>Persona</th><th>Need</th><th>Authority</th></tr>
+<tr><td>Developer</td><td>Reproducible tests and clear module contracts</td><td>Edit code and run local fixtures</td></tr>
+<tr><td>Operator</td><td>Authenticated listeners and bounded resources</td><td>Configure services and credentials</td></tr>
+<tr><td>End user</td><td>Two-peer text exchange and useful errors</td><td>Use configured endpoints and a room</td></tr>
+<tr><td>Experimenter</td><td>Simple demos and diagnostic output</td><td>Run disposable local rooms</td></tr>
+</table></div>
+<h2 id="feature-map">Feature map</h2>
+<div class="table-wrap"><table>
+<tr><th>Feature</th><th>Record</th><th>State</th><th>Epic</th></tr>
+<tr><td>Foundation gaps</td><td><a href="html/feature-foundation.html">foundation</a></td><td>built</td><td>Epic 0: Foundation</td></tr>
+<tr><td>Signal framing and names</td><td><a href="html/feature-framing.html">framing</a></td><td>built</td><td>Existing behavior</td></tr>
+<tr><td>DNS query transport</td><td><a href="html/feature-dns-existing.html">dns-existing</a></td><td>built</td><td>Existing behavior</td></tr>
+<tr><td>Peer handshake and chat</td><td><a href="html/feature-peer-existing.html">peer-existing</a></td><td>built</td><td>Existing behavior</td></tr>
+<tr><td>HTTPS fallback transport</td><td><a href="html/feature-https-existing.html">https-existing</a></td><td>built</td><td>Existing behavior</td></tr>
+<tr><td>TURN and metrics</td><td><a href="html/feature-ops-existing.html">ops-existing</a></td><td>built</td><td>Existing behavior</td></tr>
+<tr><td>DNS isolation and resource limits</td><td><a href="html/feature-dns-repairs.html">dns-repairs</a></td><td>built</td><td>Epic 1: DNS repairs</td></tr>
+<tr><td>HTTPS safety and atomic consumption</td><td><a href="html/feature-https-repairs.html">https-repairs</a></td><td>built</td><td>Epic 2: HTTPS repairs</td></tr>
+<tr><td>Peer lifecycle and metric correctness</td><td><a href="html/feature-peer-repairs.html">peer-repairs</a></td><td>built</td><td>Epic 3: Peer repairs</td></tr>
+<tr><td>Deployable servers and authentication</td><td><a href="html/feature-server-operations.html">server-operations</a></td><td>built</td><td>Epic 4: Server operations</td></tr>
+<tr><td>RFC 2136 DynUpdate transport</td><td><a href="html/feature-dynupdate.html">dynupdate</a></td><td>built</td><td>Epic 5: DynUpdate</td></tr>
+<tr><td>Diagnostics and network verification</td><td><a href="html/feature-diagnostics.html">diagnostics</a></td><td>built</td><td>Epic 6: Diagnostics</td></tr>
+</table></div>
+<p>Each planned feature links its own terminal mockup. Built features point to source files and have no mockups.</p>
+<h2 id="architecture-stack">Architecture &amp; stack</h2>
+<div class="diagram"><pre class="mermaid">flowchart LR
+ A[Offer CLI] --&gt; P[Peer Session]
+ B[Answer CLI] --&gt; Q[Peer Session]
+ P --&gt; T[Transport interface]
+ Q --&gt; T
+ T --&gt; D[DNS WriteOverQuery]
+ T --&gt; H[HTTPS handler]
+ D --&gt; M[In-memory fragments]
+ H --&gt; N[In-memory messages]
+ P &lt;--&gt;|WebRTC data| Q
+ P --&gt; R[Optional TURN server]
+ Q --&gt; R
+ P --&gt; C[Peer metrics]</pre></div>
+<p>This diagram describes the existing code. DynUpdate and configurable remote listeners remain planned.</p>
+<p>Go 1.25.0 defines the module. Source lives under cmd/ and internal/. The CLI supplies the only user interface.</p>
+<p>Pion WebRTC owns negotiation and data channels. The local internal/ice package supplies separate candidate utilities.</p>
+<p>The server uses in-memory maps. No database, filesystem state, migration, or hosted deployment exists.</p>
+<p>Verified dependency documentation, retrieved 2026-11-04:</p>
+<ul>
+<li><a href="https://pkg.go.dev/github.com/miekg/dns@v1.1.73">miekg/dns v1.1.73</a> supplies DNS messages, UDP/TCP exchanges, and TSIG APIs.
+</li>
+<li><a href="https://pkg.go.dev/github.com/pion/webrtc/v4@v4.2.26">Pion WebRTC v4.2.26</a> supplies peer connections and data channels.
+</li>
+<li><a href="https://pkg.go.dev/github.com/pion/turn/v5@v5.1.3">Pion TURN v5.1.3</a> supplies the optional relay server.
+</li>
+</ul>
+<p>The existing stack avoids a separate runtime and persistent database. These are reconstructed choices, rather than claims about the original author's intent.</p>
+<h2 id="data-model">Data model</h2>
+<div class="diagram"><pre class="mermaid">erDiagram
+ DNS_ROOM ||--o{ FRAGMENT : stores
+ HTTPS_ROOM ||--o| HTTPS_ENTRY : holds
+ SESSION ||--o| DATA_CHANNEL : owns
+ SESSION }o--o| METRICS : reports
+ DNS_ROOM {
+  string room_kind_key
+ }
+ FRAGMENT {
+  uint16 Seq
+  uint16 Total
+  bytes Data
+ }
+ HTTPS_ROOM {
+  string room_kind_key
+ }
+ HTTPS_ENTRY {
+  bytes data
+  time at
+ }
+ SESSION {
+  Config cfg
+  Role role
+  string label
+  PeerConnection pc
+ }
+ DATA_CHANNEL {
+  string label
+ }
+ METRICS {
+  int64 attempts
+  int64 successes
+  int64 failures
+  map candidates
+  duration latency
+ }</pre></div>
+<p>The diagram shows logical ownership in memory, not relational tables. There are no foreign keys or database writes.</p>
+<p>DNS_ROOM uses room/kind as its current key. FRAGMENT uses Seq within that key. Publication overwrites the same sequence.</p>
+<p>HTTPS_ROOM uses room/kind as its current key. HTTPS_ENTRY includes the body and publication time. GET attempts removal after response delivery.</p>
+<p>Session owns its peer connection and data channel. Candidate callbacks update an optional Metrics object.</p>
+<p>Metrics uses a mutex for counters. Its constructor initializes the candidate map; its zero value currently lacks that initialization.</p>
+<p>Planned features state each field or lifecycle change. They do not retroactively change this observed model.</p>
+<h2 id="cross-cutting-concerns">Cross-cutting concerns</h2>
+<p>The DNS endpoint has no authentication today. HTTPS optionally checks a shared secret. TURN uses configured username and realm-based password authentication.</p>
+<p>CRC32 detects corruption. It does not prove peer identity. Peers currently trust the signaling service with SDP and remote peer selection.</p>
+<p>The roadmap adds authenticated direct DNS transactions. It does not promise SDP confidentiality over DNS or protection against a malicious authorized service.</p>
+<p>Go errors carry failures to CLI stderr. Planned errors identify the failed stage without secret values or raw SDP.</p>
+<p>The CLI uses English text. No browser accessibility surface or translation framework exists. Structured diagnostics support automation without parsing prose.</p>
+<p>Resource bounds belong to the transport services. Planned limits include 16 KiB messages, 1024 keys, and 16 MiB retained payloads.</p>
+<h2 id="environments-config">Environments &amp; config</h2>
+<p>No environment-variable names occur in the current application configuration. CLI flags supply settings.</p>
+<p>Current DNS defaults use example.com and loopback addresses. Library polling defaults to 250 ms; CLI polling uses 50 ms.</p>
+<p>Local smoke path after server repairs:</p>
+<pre class="code"><code>go build -o /tmp/wingman ./cmd/wingman
+/tmp/wingman serve --local-demo
+/tmp/wingman offer --addr 127.0.0.1:PORT --room demo
+/tmp/wingman answer --addr 127.0.0.1:PORT --room demo</code></pre>
+<p>Replace PORT with the port printed by serve. Run each long-lived command in a separate terminal.</p>
+<p>The local smoke path uses no fixed seed data. Each test creates its own room or fixture.</p>
+<p>The roadmap uses secret files for new credentials. Store only file paths and variable names in public documentation.</p>
+<p>No deployed domain or host appears in the repository inventory. The initial target is a self-hosted CLI service with a deployment guide.</p>
+<h2 id="testing-strategy">Testing strategy</h2>
+<p>The baseline command is <code>bash scripts/coverage.sh</code>. It runs go mod tidy, go vet, package tests, and the aggregate coverage gate.</p>
+<p>The inherited baseline passes with 96.3% aggregate statement coverage. The audit race command fails in peer tests because StubTransport accesses its map without synchronization. Foundation repairs that shared test transport before it enables the new CI race gate. Some individual packages remain below 95%; the gate measures the aggregate.</p>
+<p>The audit uses a temporary writable GOCACHE because the restricted session cannot write the normal cache.</p>
+<p>Unit tests cover framing, names, URI validation, metrics, and deterministic failure paths.</p>
+<p>Existing integration tests exercise local DNS, TCP fallback, peer channels, HTTP handlers, and TURN allocations.</p>
+<p>Every repair adds a regression test for its observed failure. Concurrency changes require race tests.</p>
+<p>Foundation adds format and complexity checks. Later epics add TLS, authenticated DNS, BIND, and optional namespace tests.</p>
+<p>Completion requires the relevant regression tests, the verification command, and the documented smoke path where behavior changes.</p>
+<h2 id="epics">Epics</h2>
+<div class="table-wrap"><table>
+<tr><th>Epic</th><th>Scope</th><th>Depends on</th><th>Size</th><th>Exit criterion</th></tr>
+<tr><td>Epic 0: Foundation</td><td>Missing checks and release guide</td><td>None</td><td>5 focused tasks</td><td>Reproducible verification</td></tr>
+<tr><td>Epic 1: DNS repairs</td><td>Isolation, bounds, identity checks</td><td>Foundation</td><td>5 focused tasks</td><td>Negative tests preserve isolation</td></tr>
+<tr><td>Epic 2: HTTPS repairs</td><td>Limits, atomic consume, secure URLs</td><td>Foundation</td><td>4 focused tasks</td><td>Concurrency and limit tests pass</td></tr>
+<tr><td>Epic 3: Peer repairs</td><td>Lifecycle, metrics, candidate validation</td><td>Foundation</td><td>5 focused tasks</td><td>Resource cleanup and race checks pass</td></tr>
+<tr><td>Epic 4: Server operations</td><td>Remote listeners, zone enforcement, auth, telemetry</td><td>DNS, HTTPS, Peer repairs</td><td>6 focused tasks</td><td>Two-host authenticated smoke path</td></tr>
+<tr><td>Epic 5: DynUpdate</td><td>Standard UPDATE transport and cleanup</td><td>Server operations</td><td>5 focused tasks</td><td>BIND exchange and cleanup pass</td></tr>
+<tr><td>Epic 6: Diagnostics</td><td>Doctor, selected pair, demo, relay tests</td><td>DynUpdate</td><td>5 focused tasks</td><td>Reproducible diagnostics and demos</td></tr>
+</table></div>
+<p>Each epic produces one batch PR into dev. Existing behavior records produce no tracker issues.</p>
+<h2 id="milestones">Milestones</h2>
+<ol>
+<li>Foundation establishes the verification gate.
+</li>
+<li>DNS, HTTPS, and peer repairs establish the reliable local baseline.
+</li>
+<li>Server operations establishes authenticated remote services.
+</li>
+<li>DynUpdate establishes the third advertised transport.
+</li>
+<li>Diagnostics establishes the reviewed end-user path.
+</li>
+</ol>
+<p>Every milestone leaves tests green. The operator approves each promotion from dev to main separately.</p>
+<h2 id="assumptions" class="callout-h">Assumptions</h2>
+<ul>
+<li>The public repository also holds specs, issues, and pull requests, as the operator requested.
+</li>
+<li>The project retains Go and the current libraries unless a repair demonstrates a specific incompatibility.
+</li>
+<li>“Implement the dyndns” means the advertised RFC 2136 DynUpdate backend, rather than a provider-specific address update service.
+</li>
+<li>Self-hosted services and CLI users define this roadmap. No hosting account or domain is required to approve it.
+</li>
+<li>A browser interface can follow a later explicit product decision.
+</li>
+<li>Fresh room names identify separate exchanges. Concurrent publishers for the same role and room are unsupported.
+</li>
+<li>The scaffold targets Codex. No Claude configuration exists or is needed for the current request.
+</li>
+</ul>
+<h2 id="risks-open-questions" class="callout-h">Risks &amp; open questions</h2>
+<ul>
+<li>The race detector reports unsynchronized StubTransport map access in peer tests. Foundation repairs the shared transport before enforcing this gate.
+</li>
+<li>README advertises DynUpdate, but no implementation exists. Epic 5 supplies it.
+</li>
+<li>README claims a configured SOA negative-cache policy. The server emits no SOA. Document direct-query scope in Epic 4.
+</li>
+<li>README calls main protected. GitHub reports main and dev unprotected. The release guide proposes protection as an operator action.
+</li>
+<li>serve --zone only changes printed text today. Epic 4 makes the setting authoritative.
+</li>
+<li>DNS room keys omit zone. The server retains fragments without expiry or capacity limits. Epic 1 repairs these defects.
+</li>
+<li>HTTPS POST reads an unlimited body. Its TTL sweep does not create a memory bound. Epic 2 repairs resource limits.
+</li>
+<li>HTTPS GET releases its lock before deletion. A GET can duplicate consumption or delete a replacement. Epic 2 repairs this race.
+</li>
+<li>HTTP URLs can carry the secret and SDP without TLS. Epic 2 rejects unsafe remote URLs.
+</li>
+<li>Metrics claims a usable zero value, but RecordCandidate panics without the constructor. Epic 3 repairs this contract.
+</li>
+<li>The server metrics collector never receives DNS activity. Epic 4 wires operational counters.
+</li>
+<li>TURN comments call credentials short-term; the realm-based key implementation uses long-term authentication. Correct comments with the relevant implementation work.
+</li>
+<li>The ICE candidate utility produces port-zero address inventory. It does not provide dialable Pion candidates. Preserve that distinction in documentation.
+</li>
+<li>Unknown Session roles lack immediate errors. Session lacks explicit successful-connection cleanup. Epic 3 defines lifecycle behavior.
+</li>
+<li>WithMetrics and the ICE callback use inconsistent locking. Treat a targeted regression test as necessary evidence before the repair.
+</li>
+<li>A real DNS server retains dynamic records after cache TTL expiry. Epic 5 provides cleanup and documents interrupted exchanges.
+</li>
+<li>TSIG proves knowledge of a shared key. It does not encrypt DNS payloads or protect against an authorized malicious peer.
+</li>
+<li>The pinned URI parser comparison confirms that a portless turns URI uses 5349. Explicit ports remain unchanged. See <a href="https://github.com/Crank-Git/wingman/issues/90">#90</a>.
+</li>
+<li>No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
+</li>
+</ul>
+<h2 id="changelog">Changelog</h2>
+<ul>
+<li>2026-11-04: Limit doctor to the selected signaling endpoint and omit inapplicable checks. Allow at most one additional second for required DynUpdate cleanup after the probe deadline. Prove relay paths with actual local TURN and isolated namespace transfers.
+</li>
+<li>2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
+</li>
+<li>2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
+</li>
+<li>2026-11-04: Build TSIG before remote listeners. Use an explicit local demo mode, restricted credential files, and bounded HTTP timeouts. Record the configuration details in Epic 4 member plans. Verify namespace reachability in an isolated Linux container before sub-merge.
+</li>
+<li>2026-11-04: Group the workflow context repair and the failing chat test into a CI recovery batch before repair promotion.
+</li>
+<li>2026-11-04: Draft inheritance review. Record five existing feature sets and seven planned feature sets. Preserve public visibility and dev-and-live releases.
+</li>
+<li>2026-11-04: The operator approves the spec and scaffold. Apply the reviewed files and retain the known defects as planned work.
+</li>
+</ul>
+<h2 id="issue-map">Issue map</h2>
+<p>GitHub issues cover the seven planned feature sets. The five built feature sets create no issues.</p>
+<div class="table-wrap"><table>
+<tr><th>Epic</th><th>Feature</th><th>Epic issue</th><th>Sub-issues</th></tr>
+<tr><td>Epic 0: Foundation</td><td>foundation</td><td><a href="https://github.com/Crank-Git/wingman/issues/10">#10</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/11">#11</a>, <a href="https://github.com/Crank-Git/wingman/issues/12">#12</a>, <a href="https://github.com/Crank-Git/wingman/issues/13">#13</a>, <a href="https://github.com/Crank-Git/wingman/issues/14">#14</a>, <a href="https://github.com/Crank-Git/wingman/issues/15">#15</a></td></tr>
+<tr><td>Epic 1: DNS repairs</td><td>dns-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a>, <a href="https://github.com/Crank-Git/wingman/issues/18">#18</a>, <a href="https://github.com/Crank-Git/wingman/issues/19">#19</a>, <a href="https://github.com/Crank-Git/wingman/issues/20">#20</a>, <a href="https://github.com/Crank-Git/wingman/issues/21">#21</a></td></tr>
+<tr><td>Epic 2: HTTPS repairs</td><td>https-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/22">#22</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a>, <a href="https://github.com/Crank-Git/wingman/issues/24">#24</a>, <a href="https://github.com/Crank-Git/wingman/issues/25">#25</a>, <a href="https://github.com/Crank-Git/wingman/issues/26">#26</a></td></tr>
+<tr><td>Epic 3: Peer repairs</td><td>peer-repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a>, <a href="https://github.com/Crank-Git/wingman/issues/29">#29</a>, <a href="https://github.com/Crank-Git/wingman/issues/30">#30</a>, <a href="https://github.com/Crank-Git/wingman/issues/31">#31</a>, <a href="https://github.com/Crank-Git/wingman/issues/32">#32</a></td></tr>
+<tr><td>Epic 4: Server operations</td><td>server-operations</td><td><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a>, <a href="https://github.com/Crank-Git/wingman/issues/35">#35</a>, <a href="https://github.com/Crank-Git/wingman/issues/36">#36</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a>, <a href="https://github.com/Crank-Git/wingman/issues/38">#38</a>, <a href="https://github.com/Crank-Git/wingman/issues/39">#39</a></td></tr>
+<tr><td>Epic 5: DynUpdate</td><td>dynupdate</td><td><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a>, <a href="https://github.com/Crank-Git/wingman/issues/42">#42</a>, <a href="https://github.com/Crank-Git/wingman/issues/43">#43</a>, <a href="https://github.com/Crank-Git/wingman/issues/44">#44</a>, <a href="https://github.com/Crank-Git/wingman/issues/45">#45</a></td></tr>
+<tr><td>Epic 6: Diagnostics</td><td>diagnostics</td><td><a href="https://github.com/Crank-Git/wingman/issues/46">#46</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/47">#47</a>, <a href="https://github.com/Crank-Git/wingman/issues/48">#48</a>, <a href="https://github.com/Crank-Git/wingman/issues/49">#49</a>, <a href="https://github.com/Crank-Git/wingman/issues/50">#50</a>, <a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+</table></div>
+<h3 id="requirement-coverage">Requirement coverage</h3>
+<div class="table-wrap"><table>
+<tr><th>Requirement</th><th>Sub-issues</th></tr>
+<tr><td>FR-foundation-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/14">#14</a></td></tr>
+<tr><td>FR-foundation-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/13">#13</a></td></tr>
+<tr><td>FR-foundation-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/13">#13</a></td></tr>
+<tr><td>FR-foundation-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/12">#12</a></td></tr>
+<tr><td>FR-foundation-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/15">#15</a></td></tr>
+<tr><td>FR-foundation-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/11">#11</a></td></tr>
+<tr><td>FR-dns-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a></td></tr>
+<tr><td>FR-dns-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/17">#17</a></td></tr>
+<tr><td>FR-dns-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/18">#18</a></td></tr>
+<tr><td>FR-dns-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/19">#19</a></td></tr>
+<tr><td>FR-dns-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/20">#20</a></td></tr>
+<tr><td>FR-dns-repairs-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/21">#21</a></td></tr>
+<tr><td>FR-https-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a></td></tr>
+<tr><td>FR-https-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/24">#24</a></td></tr>
+<tr><td>FR-https-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/25">#25</a></td></tr>
+<tr><td>FR-https-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/26">#26</a></td></tr>
+<tr><td>FR-https-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/23">#23</a></td></tr>
+<tr><td>FR-peer-repairs-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a></td></tr>
+<tr><td>FR-peer-repairs-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/28">#28</a></td></tr>
+<tr><td>FR-peer-repairs-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/29">#29</a>, <a href="https://github.com/Crank-Git/wingman/issues/32">#32</a></td></tr>
+<tr><td>FR-peer-repairs-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/30">#30</a></td></tr>
+<tr><td>FR-peer-repairs-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/30">#30</a></td></tr>
+<tr><td>FR-peer-repairs-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/31">#31</a></td></tr>
+<tr><td>FR-server-operations-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a></td></tr>
+<tr><td>FR-server-operations-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/34">#34</a></td></tr>
+<tr><td>FR-server-operations-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/35">#35</a></td></tr>
+<tr><td>FR-server-operations-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/36">#36</a>, <a href="https://github.com/Crank-Git/wingman/issues/37">#37</a></td></tr>
+<tr><td>FR-server-operations-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/38">#38</a></td></tr>
+<tr><td>FR-server-operations-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/39">#39</a></td></tr>
+<tr><td>FR-dynupdate-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a></td></tr>
+<tr><td>FR-dynupdate-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/42">#42</a></td></tr>
+<tr><td>FR-dynupdate-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/43">#43</a></td></tr>
+<tr><td>FR-dynupdate-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/41">#41</a></td></tr>
+<tr><td>FR-dynupdate-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/44">#44</a></td></tr>
+<tr><td>FR-dynupdate-6</td><td><a href="https://github.com/Crank-Git/wingman/issues/45">#45</a></td></tr>
+<tr><td>FR-diagnostics-1</td><td><a href="https://github.com/Crank-Git/wingman/issues/47">#47</a>, <a href="https://github.com/Crank-Git/wingman/issues/48">#48</a></td></tr>
+<tr><td>FR-diagnostics-2</td><td><a href="https://github.com/Crank-Git/wingman/issues/49">#49</a></td></tr>
+<tr><td>FR-diagnostics-3</td><td><a href="https://github.com/Crank-Git/wingman/issues/50">#50</a></td></tr>
+<tr><td>FR-diagnostics-4</td><td><a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+<tr><td>FR-diagnostics-5</td><td><a href="https://github.com/Crank-Git/wingman/issues/51">#51</a></td></tr>
+</table></div>
+<h3 id="dependencies">Dependencies</h3>
+<ul>
+<li><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/22">#22</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/10">#10</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/16">#16</a>, <a href="https://github.com/Crank-Git/wingman/issues/22">#22</a>, <a href="https://github.com/Crank-Git/wingman/issues/27">#27</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/33">#33</a>.
+</li>
+<li><a href="https://github.com/Crank-Git/wingman/issues/46">#46</a> depends on <a href="https://github.com/Crank-Git/wingman/issues/40">#40</a>.
+</li>
+</ul>
+<p>Sub-issue bodies record dependencies within each epic. GitHub records each child as a native sub-issue.</p>
+<h2 id="supplemental-issues">Supplemental issues</h2>
+<div class="table-wrap"><table>
+<tr><th>Work</th><th>Tracking</th><th>Members</th></tr>
+<tr><td>CI recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/74">#74</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/69">#69</a>, <a href="https://github.com/Crank-Git/wingman/issues/73">#73</a></td></tr>
+<tr><td>Concurrent coverage profiles</td><td><a href="https://github.com/Crank-Git/wingman/issues/16">#16</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/62">#62</a></td></tr>
+<tr><td>Ephemeral DNS port recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/27">#27</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/84">#84</a></td></tr>
+<tr><td>Server deployment repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/33">#33</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/90">#90</a>, <a href="https://github.com/Crank-Git/wingman/issues/91">#91</a>, <a href="https://github.com/Crank-Git/wingman/issues/98">#98</a></td></tr>
+<tr><td>DynUpdate test recovery</td><td><a href="https://github.com/Crank-Git/wingman/issues/40">#40</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/109">#109</a></td></tr>
+<tr><td>Review diagnostic repairs</td><td><a href="https://github.com/Crank-Git/wingman/issues/124">#124</a></td><td><a href="https://github.com/Crank-Git/wingman/issues/120">#120</a>, <a href="https://github.com/Crank-Git/wingman/issues/121">#121</a></td></tr>
+</table></div><nav class="pager">
+<span></span>
+<a href="html/page-audit.html">Repository audit and evidence &rarr;</a>
+</nav>
+</main>
+</div>
+<script src="assets/mermaid.min.js"></script>
+<script>mermaid.initialize({startOnLoad:true,theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'default'});</script>
+<script type="application/json" id="rv-embedded">[]</script>
+<script>
+(function(){
+  'use strict';
+  var PAGE = document.body.getAttribute('data-page');
+  // storage key carries the spec's slug: file:// pages can share one
+  // localStorage pool, and two specs must never share a comment store
+  var RVKEY = 'spec-review:' + (document.body.getAttribute('data-rvkey') || 'spec');
+  var EMBED = [];
+  var embedEl = document.getElementById('rv-embedded');
+  if (embedEl) { try { EMBED = JSON.parse(embedEl.textContent); } catch(e){} }
+  function loadLocal(){ try { return JSON.parse(localStorage.getItem(RVKEY)) || {comments:[], deleted:[]}; } catch(e){ return {comments:[], deleted:[]}; } }
+  function saveLocal(s){ try { localStorage.setItem(RVKEY, JSON.stringify(s)); } catch(e){} }
+  function cid(c){ return c.page + '|' + c.section + '|' + (c.date||'') + '|' + c.body.slice(0,24); }
+  function allComments(){
+    var s = loadLocal(), map = {};
+    EMBED.forEach(function(c){ map[cid(c)] = c; });
+    s.comments.forEach(function(c){ map[cid(c)] = c; });
+    s.deleted.forEach(function(id){ delete map[id]; });
+    return Object.keys(map).map(function(k){ return map[k]; });
+  }
+  function upsert(c){
+    var s = loadLocal(), id = cid(c);
+    s.comments = s.comments.filter(function(x){ return cid(x) !== id; });
+    s.comments.push(c);
+    s.deleted = s.deleted.filter(function(x){ return x !== id; });
+    saveLocal(s); refresh();
+  }
+  function remove(c){
+    var s = loadLocal(), id = cid(c);
+    s.comments = s.comments.filter(function(x){ return cid(x) !== id; });
+    if (EMBED.some(function(x){ return cid(x) === id; })) s.deleted.push(id);
+    saveLocal(s); refresh();
+  }
+  function today(){ return new Date().toISOString().slice(0,10); }
+  function exportMd(){
+    var lines = ['# Review comments', '',
+      '<!-- Exported from the spec review layer. Save this file as',
+      '     docs/specs/review-comments.md and re-run render-spec.py to embed',
+      '     every comment under its section for the next review round. -->', ''];
+    allComments().sort(function(a,b){
+      return (a.page+a.section).localeCompare(b.page+b.section);
+    }).forEach(function(c){
+      lines.push('## [' + c.page + '] ' + (c.section||''));
+      lines.push('status: ' + (c.status||'open'));
+      lines.push('date: ' + (c.date||today()));
+      lines.push(c.body); lines.push('');
+    });
+    var blob = new Blob([lines.join('\n')], {type:'text/markdown'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'review-comments.md';
+    a.click(); URL.revokeObjectURL(a.href);
+  }
+  function importMd(file){
+    var reader = new FileReader();
+    reader.onload = function(){
+      var text = String(reader.result);
+      var blocks = text.split(/^## /m).slice(1);
+      blocks.forEach(function(b){
+        var head = b.match(/^\[([^\]]+)\]\s*(\S*)/);
+        if (!head) return;
+        var status = (b.match(/^status:\s*(\S+)/m)||[])[1] || 'open';
+        var date = (b.match(/^date:\s*(\S+)/m)||[])[1] || today();
+        var body = b.replace(/^\[[^\]]*\]\s*\S*\s*\n/, '')
+                    .replace(/^status:.*\n?/m,'').replace(/^date:.*\n?/m,'').trim();
+        if (body) upsert({page:head[1], section:head[2]||'', status:status, date:date, body:body});
+      });
+      refresh();
+    };
+    reader.readAsText(file);
+  }
+  function commentBox(c){
+    var div = document.createElement('div');
+    div.className = 'rv-comment' + (c.status === 'resolved' ? ' rv-resolved' : '');
+    var head = document.createElement('div'); head.className = 'rv-head';
+    head.textContent = '💬 ' + (c.date||'') + ' · ' + (c.status||'open');
+    var tog = document.createElement('button');
+    tog.textContent = c.status === 'resolved' ? 'reopen' : 'resolve';
+    tog.onclick = function(){ remove(c); c = Object.assign({}, c, {status: c.status === 'resolved' ? 'open' : 'resolved'}); upsert(c); };
+    var del = document.createElement('button'); del.textContent = 'delete';
+    del.onclick = function(){ if (confirm('Delete this comment?')) remove(c); };
+    head.appendChild(tog); head.appendChild(del);
+    var body = document.createElement('div'); body.className = 'rv-body';
+    body.textContent = c.body;
+    div.appendChild(head); div.appendChild(body);
+    return div;
+  }
+  function editor(section, after){
+    var wrap = document.createElement('div');
+    wrap.className = 'rv-comment rv-editor';
+    var ta = document.createElement('textarea');
+    ta.placeholder = 'Comment on this section…';
+    var actions = document.createElement('div'); actions.className = 'rv-actions';
+    var save = document.createElement('button'); save.textContent = 'Save';
+    save.onclick = function(){
+      if (ta.value.trim()) upsert({page:PAGE, section:section, status:'open', date:today(), body:ta.value.trim()});
+      wrap.remove();
+    };
+    var cancel = document.createElement('button'); cancel.textContent = 'Cancel';
+    cancel.className = 'rv-cancel'; cancel.onclick = function(){ wrap.remove(); };
+    actions.appendChild(save); actions.appendChild(cancel);
+    wrap.appendChild(ta); wrap.appendChild(actions);
+    after.insertAdjacentElement('afterend', wrap);
+    ta.focus();
+  }
+  // --- headings, inline buttons ---
+  var mainH1 = document.querySelector('main h1');
+  if (mainH1 && !mainH1.id) { mainH1.id = 'page-title'; }
+  var headings = Array.prototype.slice.call(
+    document.querySelectorAll('main h1[id], main h2[id], main h3[id], main h4[id]'));
+  headings.forEach(function(h){
+    var b = document.createElement('button');
+    b.className = 'rv-add'; b.textContent = '💬 comment'; b.title = 'Comment on this section';
+    b.onclick = function(){ editor(h.id, h); };
+    h.appendChild(b);
+  });
+  function headingTitle(h){
+    var t = h.childNodes[0] ? h.childNodes[0].textContent : h.textContent;
+    return t.trim();
+  }
+  function titleFor(section){
+    var el = section && document.getElementById(section);
+    return el ? headingTitle(el) : (section || '(page)');
+  }
+
+  // --- drawer ---
+  var drawer = document.createElement('div');
+  drawer.id = 'rv-drawer';
+  drawer.innerHTML =
+    '<header><strong>Review</strong> <span class="rv-count"></span></header>' +
+    '<div class="rv-compose">' +
+    '<div class="rv-live">Commenting on the section in view:</div>' +
+    '<label for="rv-sec"></label><select id="rv-sec"></select>' +
+    '<textarea id="rv-text" placeholder="Type as you read… (Ctrl+Enter saves)"></textarea>' +
+    '<div style="margin-top:.4rem; display:flex; gap:.5rem;">' +
+    '<button class="rv-primary" id="rv-save">Save comment</button>' +
+    '<button id="rv-clear">Clear</button></div></div>' +
+    '<div class="rv-list"></div>' +
+    '<footer><button id="rv-export">Export .md</button>' +
+    '<button id="rv-import">Import</button>' +
+    '<span class="rv-otherpages"></span></footer>';
+  document.body.appendChild(drawer);
+  var toggle = document.createElement('button');
+  toggle.id = 'rv-toggle';
+  toggle.onclick = function(){
+    document.body.classList.toggle('rv-open');
+    try { localStorage.setItem(RVKEY + ':open', document.body.classList.contains('rv-open') ? '1' : ''); } catch(e){}
+  };
+  document.body.appendChild(toggle);
+  try { if (localStorage.getItem(RVKEY + ':open')) document.body.classList.add('rv-open'); } catch(e){}
+
+  var sel = drawer.querySelector('#rv-sec');
+  headings.forEach(function(h){
+    var opt = document.createElement('option');
+    opt.value = h.id; opt.textContent = headingTitle(h);
+    sel.appendChild(opt);
+  });
+  var followScroll = true;
+  sel.onchange = function(){ followScroll = false; };
+
+  // scroll spy: pick the last heading above the upper third of the viewport
+  function currentSection(){
+    var line = window.innerHeight * 0.33, best = headings[0];
+    for (var i = 0; i < headings.length; i++) {
+      if (headings[i].getBoundingClientRect().top <= line) best = headings[i];
+    }
+    return best ? best.id : '';
+  }
+  window.addEventListener('scroll', function(){
+    if (!followScroll) return;
+    var s = currentSection();
+    if (s && sel.value !== s) sel.value = s;
+  }, {passive:true});
+  // typing pins the target section so a stray scroll can't retarget the comment
+  drawer.querySelector('#rv-text').addEventListener('input', function(){
+    if (this.value.trim()) followScroll = false;
+    else followScroll = true;
+  });
+
+  function saveFromDrawer(){
+    var ta = drawer.querySelector('#rv-text');
+    if (!ta.value.trim()) return;
+    upsert({page:PAGE, section:sel.value, status:'open', date:today(), body:ta.value.trim()});
+    ta.value = ''; followScroll = true;
+  }
+  drawer.querySelector('#rv-save').onclick = saveFromDrawer;
+  drawer.querySelector('#rv-text').addEventListener('keydown', function(e){
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') saveFromDrawer();
+  });
+  drawer.querySelector('#rv-clear').onclick = function(){
+    drawer.querySelector('#rv-text').value = ''; followScroll = true;
+  };
+  drawer.querySelector('#rv-export').onclick = exportMd;
+  var fileIn = document.createElement('input');
+  fileIn.type = 'file'; fileIn.accept = '.md,text/markdown'; fileIn.style.display = 'none';
+  fileIn.onchange = function(){ if (fileIn.files[0]) importMd(fileIn.files[0]); };
+  drawer.appendChild(fileIn);
+  drawer.querySelector('#rv-import').onclick = function(){ fileIn.click(); };
+
+  function drawerItem(c){
+    var div = document.createElement('div');
+    div.className = 'rv-item' + (c.status === 'resolved' ? ' rv-resolved' : '');
+    var where = document.createElement('div'); where.className = 'rv-where';
+    where.textContent = titleFor(c.section);
+    var text = document.createElement('div'); text.className = 'rv-text';
+    text.textContent = c.body;
+    var meta = document.createElement('div'); meta.className = 'rv-meta';
+    meta.textContent = (c.date||'') + ' · ' + (c.status||'open');
+    var tog = document.createElement('button');
+    tog.textContent = c.status === 'resolved' ? 'reopen' : 'resolve';
+    tog.onclick = function(e){ e.stopPropagation(); remove(c);
+      upsert(Object.assign({}, c, {status: c.status === 'resolved' ? 'open' : 'resolved'})); };
+    var del = document.createElement('button'); del.textContent = 'delete';
+    del.onclick = function(e){ e.stopPropagation();
+      if (confirm('Delete this comment?')) remove(c); };
+    meta.appendChild(tog); meta.appendChild(del);
+    div.appendChild(where); div.appendChild(text); div.appendChild(meta);
+    div.onclick = function(){
+      var el = c.section && document.getElementById(c.section);
+      if (el) el.scrollIntoView({behavior:'smooth', block:'start'});
+    };
+    return div;
+  }
+
+  function refresh(){
+    document.querySelectorAll('.rv-comment:not(.rv-editor)').forEach(function(el){ el.remove(); });
+    var all = allComments();
+    var mine = all.filter(function(c){ return c.page === PAGE; });
+    mine.forEach(function(c){
+      var target = c.section && document.getElementById(c.section);
+      var anchor = target || mainH1 || document.body.querySelector('main') || document.body;
+      anchor.insertAdjacentElement('afterend', commentBox(c));
+    });
+    var open = all.filter(function(c){ return c.status !== 'resolved'; }).length;
+    toggle.textContent = '💬 Review (' + open + ')';
+    drawer.querySelector('.rv-count').textContent =
+      open + ' open / ' + all.length + ' total';
+    var list = drawer.querySelector('.rv-list');
+    list.innerHTML = '';
+    mine.slice().reverse().forEach(function(c){ list.appendChild(drawerItem(c)); });
+    var others = {};
+    all.forEach(function(c){ if (c.page !== PAGE) others[c.page] = (others[c.page]||0) + 1; });
+    var otherKeys = Object.keys(others);
+    drawer.querySelector('.rv-otherpages').textContent = otherKeys.length
+      ? 'Other pages: ' + otherKeys.map(function(k){ return k + ' (' + others[k] + ')'; }).join(', ')
+      : '';
+  }
+  refresh();
+  var s0 = currentSection();
+  if (s0) sel.value = s0;
+})();
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -17,7 +19,23 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: 'stable'
+          go-version-file: go.mod
 
-      - name: Run tests and coverage gate
-        run: bash scripts/coverage.sh
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install complexity tool
+        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
+
+      - name: Verify
+        env:
+          GOCACHE: ${{ runner.temp }}/wingman-go-cache
+        run: bash scripts/verify.sh
+
+      - name: Namespace acceptance
+        run: bash scripts/namespace-smoke.sh --scenario all
+
+      - name: BIND acceptance
+        run: python3 scripts/dynupdate-acceptance.py

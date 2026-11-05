@@ -1,14 +1,16 @@
 // Command wingman is a local peer CLI for the Wingman WebRTC signaling system.
 //
-// It provides three subcommands:
+// It provides five subcommands:
 //
 //	serve   start an in-process DNS signaling server and print its address
 //	offer   run the offerer role: create a data channel, then type messages to send
 //	answer  run the answerer role: receive the data channel and print incoming messages
+//	cleanup delete one DynUpdate room's offer and answer records
+//	doctor  check the selected signaling endpoint in a disposable room
 //
 // For a local single-host demo, start one server and point both peers at it:
 //
-//	wingman serve                              # prints "listening on 127.0.0.1:PORT"
+//	wingman serve --local-demo                 # prints "listening on 127.0.0.1:PORT"
 //	wingman offer --addr 127.0.0.1:PORT --room demo
 //	wingman answer --addr 127.0.0.1:PORT --room demo
 package main
@@ -20,7 +22,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/http"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -43,6 +45,8 @@ const defaultZone = "example.com"
 
 // defaultDialTimeout bounds a single DNS exchange for a peer.
 const defaultDialTimeout = 5 * time.Second
+
+const defaultHandshakeTimeout = 30 * time.Second
 
 // defaultPollInterval is the delay between poll attempts while a peer waits for
 // the other side's SDP.
@@ -87,6 +91,10 @@ func dispatch(ctx context.Context, args []string) error {
 		return runOffer(ctx, args[1:])
 	case "answer":
 		return runAnswer(ctx, args[1:])
+	case "cleanup":
+		return runCleanup(ctx, args[1:])
+	case "doctor":
+		return runDoctor(ctx, args[1:])
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -99,126 +107,157 @@ func usage(w io.Writer) {
 	fmt.Fprint(w, `wingman - WebRTC signaling over DNS
 
 Usage:
-  wingman serve                      start a local DNS signaling server
+  wingman serve --local-demo         start a local DNS signaling server
   wingman offer  [flags]             run the offerer: create a data channel, then type messages
   wingman answer [flags]             run the answerer: receive the data channel, print incoming messages
+  wingman cleanup [flags]            delete one DynUpdate room's offer and answer TXT RRsets
+  wingman doctor [flags]             probe the selected endpoint in a random disposable room
+
+doctor mutates only a random disposable probe room. Run wingman doctor --help for probe limits.
+
+cleanup flags (all required):
+  --addr HOST:PORT --zone ZONE --room NAME --dns-tsig-key-file PATH
 
 offer/answer flags:
-  --addr 127.0.0.1:PORT   DNS server address printed by 'serve' (required for --signaling dns)
+  --addr HOST:PORT        DNS server address (required for dns and dynupdate)
+  --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS queries
   --room NAME             signaling room shared by both peers (required)
-  --zone example.com      authoritative DNS zone (default "example.com")
+  --zone example.com      authoritative DNS zone (required explicitly for dynupdate; default "example.com" otherwise)
   --label wingman         data channel label (default "wingman")
-  --signaling dns|https   signaling transport (default "dns")
+  --signaling dns|https|dynupdate  signaling transport (default "dns")
   --signaling-url URL     HTTPS signaling base URL (required for --signaling https)
+  --signaling-allow-loopback-http  permit loopback HTTP for development and tests
   --signaling-secret S    shared secret for --signaling https (authenticates the channel)
+  --signaling-secret-file PATH  restricted token file for HTTPS authentication
   --turn URI              TURN/STUN server URI, repeatable (enables srflx/relay ICE)
   --user NAME             TURN username for --turn servers
   --pass PASS             TURN password for --turn servers
+  --pass-file PATH        restricted TURN password file (instead of --pass)
   --metrics               print connection metrics (Prometheus format) on exit
+  --handshake-timeout D    positive handshake duration (default "30s")
 
 serve flags:
+  --listen 127.0.0.1:0    DNS UDP and TCP listen address (literal IP and port)
+  --local-demo            permit unauthenticated loopback DNS
+  --dns-tsig-key-file PATH  restricted TSIG JSON file for DNS authentication
+  --https-listen ADDR     optional TLS signaling listen address
+  --tls-cert PATH         TLS certificate PEM file
+  --tls-key PATH          TLS private key PEM file
+  --signaling-secret-file PATH  restricted token file for HTTPS authentication
   --zone example.com      authoritative DNS zone this server serves
   --metrics-addr ADDR     also serve Prometheus /metrics on ADDR (e.g. 127.0.0.1:9090)
   --turn-server ADDR      also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478)
   --turn-user NAME        TURN username for the self-hosted server (enables relay candidates)
   --turn-pass PASS        TURN password for the self-hosted server
+  --turn-pass-file PATH   restricted TURN password file (instead of --turn-pass)
   --turn-external ADDR    public IP peers dial the server on (required when binding 0.0.0.0)
 `)
 }
 
 // runServe starts the in-process DNS signaling server and blocks until ctx is
 // cancelled (Ctrl-C). It prints the address peers must dial.
-func runServe(ctx context.Context, args []string) error {
+func runServe(ctx context.Context, args []string) (result error) {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone this server serves")
+	listen := fs.String("listen", "127.0.0.1:0", "DNS UDP and TCP listen address")
+	localDemo := fs.Bool("local-demo", false, "permit unauthenticated loopback DNS")
+	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
+	httpsListen := fs.String("https-listen", "", "optional TLS signaling listen address")
+	tlsCert := fs.String("tls-cert", "", "TLS certificate PEM file")
+	tlsKey := fs.String("tls-key", "", "TLS private key PEM file")
+	secretFile := fs.String("signaling-secret-file", "", "restricted HTTPS token file")
 	metricsAddr := fs.String("metrics-addr", "", "optional address to serve Prometheus /metrics on, e.g. 127.0.0.1:9090 (disabled by default)")
 	turnAddr := fs.String("turn-server", "", "also run a self-hosted TURN/STUN server on ADDR (e.g. 127.0.0.1:3478) for srflx/relay ICE")
 	turnUser := fs.String("turn-user", "", "TURN username for the self-hosted server (enables relay candidates)")
 	turnPass := fs.String("turn-pass", "", "TURN password for the self-hosted server")
+	turnPassFile := fs.String("turn-pass-file", "", "restricted TURN password file")
 	turnExternal := fs.String("turn-external", "", "public IP peers dial the server on (required when binding a wildcard interface)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	srv, err := startServe()
+	password, err := loadTURNPassword(*turnPass, *turnPassFile)
 	if err != nil {
 		return err
 	}
-	defer srv.Stop()
-	fmt.Printf("wingman server listening on %s (zone %q)\n", srv.Addr(), *zone)
-
-	var turnSrv *turnserver.Server
-	if turnSrv, err = startTurnServer(os.Stdout, turnserver.Config{
-		Addr:         *turnAddr,
-		Username:     *turnUser,
-		Password:     *turnPass,
-		ExternalAddr: *turnExternal,
-	}); err != nil {
+	if *zone == "" {
+		return errors.New("DNS zone must not be empty")
+	}
+	key, err := loadOptionalTSIG(*tsigFile)
+	if err != nil {
 		return err
 	}
-	if turnSrv != nil {
-		defer func() { _ = turnSrv.Close() }()
-	}
-
-	var metricsSrv *http.Server
-	if *metricsAddr != "" {
-		metricsSrv = &http.Server{
-			Addr:    *metricsAddr,
-			Handler: metrics.New().MetricsHandler(),
+	if *localDemo {
+		host, _, err := net.SplitHostPort(*listen)
+		if err != nil {
+			return fmt.Errorf("local demo listen address: %w", err)
 		}
-		go func() {
-			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				fmt.Fprintf(os.Stderr, "metrics server error: %v\n", err)
-			}
-		}()
-		fmt.Printf("metrics listening on %s/metrics\n", *metricsAddr)
+		if !net.ParseIP(host).IsLoopback() {
+			return errors.New("local demo requires a loopback IP listen address")
+		}
+	} else if key == nil {
+		return errors.New("DNS requires --dns-tsig-key-file or explicit --local-demo")
 	}
-
-	<-ctx.Done()
-	if metricsSrv != nil {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = metricsSrv.Shutdown(shutdownCtx)
-	}
-	return nil
+	return serveListeners(ctx, serveConfig{
+		zone: *zone, listen: *listen, key: key,
+		https:       https.ServerConfig{ListenAddr: *httpsListen, CertFile: *tlsCert, KeyFile: *tlsKey, SecretFile: *secretFile, LocalDemo: *localDemo},
+		metricsAddr: *metricsAddr,
+		turn:        turnserver.Config{Addr: *turnAddr, Username: *turnUser, Password: password, ExternalAddr: *turnExternal},
+	}, os.Stdout)
 }
 
 // peerOpts holds the flags shared by the offer and answer subcommands.
 type peerOpts struct {
-	addr            string
-	zone            string
-	room            string
-	label           string
-	signaling       string
-	signalingURL    string
-	signalingSecret string
-	turn            []string
-	user            string
-	pass            string
-	metrics         bool
+	dnsTSIGKeyFile      string
+	addr                string
+	zone                string
+	room                string
+	label               string
+	signaling           string
+	signalingURL        string
+	signalingSecret     string
+	signalingSecretFile string
+	allowLoopbackHTTP   bool
+	turn                []string
+	user                string
+	pass                string
+	metrics             bool
+	handshakeTimeout    time.Duration
 }
 
 // parsePeerFlags parses and validates the offer/answer flags.
 func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	fs := flag.NewFlagSet(name, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
-	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for --signaling dns)")
+	tsigFile := fs.String("dns-tsig-key-file", "", "restricted TSIG JSON file")
+	addr := fs.String("addr", "", "DNS server address, e.g. 127.0.0.1:5353 (required for dns and dynupdate)")
 	zone := fs.String("zone", defaultZone, "authoritative DNS zone")
 	room := fs.String("room", "", "signaling room shared with the other peer (required)")
 	label := fs.String("label", "wingman", "data channel label")
-	signaling := fs.String("signaling", "dns", "signaling transport: dns or https")
+	signaling := fs.String("signaling", "dns", "signaling transport: dns, https, or dynupdate")
 	signalingURL := fs.String("signaling-url", "", "HTTPS signaling base URL (required for --signaling https)")
 	signalingSecret := fs.String("signaling-secret", "", "shared secret for --signaling https (authenticates the signaling channel)")
+	signalingSecretFile := fs.String("signaling-secret-file", "", "restricted HTTPS token file")
+	allowLoopbackHTTP := fs.Bool("signaling-allow-loopback-http", false, "permit loopback HTTP for development and tests")
 	var turnServers stringSliceFlag
 	fs.Var(&turnServers, "turn", "TURN/STUN server URI, repeatable, e.g. --turn turn:stun.example.com:3478")
 	user := fs.String("user", "", "TURN username for --turn servers")
 	pass := fs.String("pass", "", "TURN password for --turn servers")
+	passFile := fs.String("pass-file", "", "restricted TURN password file")
 	metricsFlag := fs.Bool("metrics", false, "print connection metrics (Prometheus format) on exit")
+	handshakeTimeout := fs.Duration("handshake-timeout", defaultHandshakeTimeout, "positive handshake duration")
 	if err := fs.Parse(args); err != nil {
+		return peerOpts{}, err
+	}
+	password, err := loadTURNPassword(*pass, *passFile)
+	if err != nil {
 		return peerOpts{}, err
 	}
 	if *room == "" {
 		return peerOpts{}, fmt.Errorf("%s: --room is required", name)
+	}
+	if *handshakeTimeout <= 0 {
+		return peerOpts{}, fmt.Errorf("%s: --handshake-timeout must be positive", name)
 	}
 	if *signaling == "dns" && *addr == "" {
 		return peerOpts{}, fmt.Errorf("%s: --addr is required for --signaling dns", name)
@@ -226,17 +265,31 @@ func parsePeerFlags(name string, args []string) (peerOpts, error) {
 	if *signaling == "https" && strings.TrimSpace(*signalingURL) == "" {
 		return peerOpts{}, fmt.Errorf("%s: --signaling-url is required for --signaling https", name)
 	}
+	if *signaling == "dynupdate" {
+		zoneSet := false
+		fs.Visit(func(f *flag.Flag) {
+			if f.Name == "zone" {
+				zoneSet = true
+			}
+		})
+		if strings.TrimSpace(*addr) == "" || !zoneSet || strings.TrimSpace(*zone) == "" || strings.TrimSpace(*tsigFile) == "" {
+			return peerOpts{}, fmt.Errorf("%s: dynupdate requires --addr, explicit --zone, and --dns-tsig-key-file", name)
+		}
+	}
 	return peerOpts{
-		addr: *addr, zone: *zone, room: *room, label: *label,
+		dnsTSIGKeyFile: *tsigFile, addr: *addr, zone: *zone, room: *room, label: *label,
 		signaling: *signaling, signalingURL: *signalingURL, signalingSecret: *signalingSecret,
-		turn: turnServers, user: *user, pass: *pass, metrics: *metricsFlag,
+		signalingSecretFile: *signalingSecretFile,
+		allowLoopbackHTTP:   *allowLoopbackHTTP,
+		turn:                turnServers, user: *user, pass: password, metrics: *metricsFlag,
+		handshakeTimeout: *handshakeTimeout,
 	}, nil
 }
 
 // runPeer builds the signaling transport and ICE servers from opts, connects a
 // session for the given role (recording metrics), and runs the send/receive
 // loop. It prints the metrics snapshot when opts.metrics is set.
-func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) error {
+func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, out io.Writer) (err error) {
 	transport, err := buildTransport(opts)
 	if err != nil {
 		return err
@@ -246,14 +299,27 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		return err
 	}
 	m := metrics.New()
-	sess, err := startSession(ctx, role, peer.Config{
+	timeout := opts.handshakeTimeout
+	if timeout == 0 {
+		timeout = defaultHandshakeTimeout
+	}
+	handshakeCtx, cancel := context.WithTimeout(ctx, timeout)
+	sess, err := startSession(handshakeCtx, role, peer.Config{
 		Room:       opts.room,
 		Zone:       opts.zone,
 		Transport:  transport,
 		ICEServers: iceServers,
 		Label:      opts.label,
 	}, m)
+	cancel()
 	if err != nil {
+		return err
+	}
+	defer func() {
+		err = closePeerSession(sess.Close, err)
+	}()
+	pair, available := sess.SelectedCandidatePair()
+	if err := printSelectedPair(out, pair, available); err != nil {
 		return err
 	}
 	err = chat(ctx, sess, role, in, out)
@@ -261,6 +327,30 @@ func runPeer(ctx context.Context, role peer.Role, opts peerOpts, in io.Reader, o
 		fmt.Fprint(out, m.Text())
 	}
 	return err
+}
+
+func printSelectedPair(out io.Writer, pair peer.CandidatePairTypes, available bool) error {
+	var err error
+	if !available {
+		_, err = fmt.Fprintln(out, "selected pair: unavailable")
+	} else {
+		_, err = fmt.Fprintf(out, "selected pair: local=%s remote=%s\n", pair.Local, pair.Remote)
+	}
+	if err != nil {
+		return fmt.Errorf("write selected pair: %w", err)
+	}
+	return nil
+}
+
+func closePeerSession(closeSession func() error, result error) error {
+	closeErr := closeSession()
+	if result != nil {
+		return result
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close session: %w", closeErr)
+	}
+	return nil
 }
 
 // startSession creates a session for role with cfg, runs the handshake, and
@@ -273,6 +363,17 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 	if _, err := sess.Start(ctx); err != nil {
 		m.ConnectionFailed()
 		m.Failure()
+		var timeout net.Error
+		if errors.As(err, &timeout) && timeout.Timeout() {
+			cause := ctx.Err()
+			// Socket deadlines can expire before the context timer callback runs.
+			if deadline, ok := ctx.Deadline(); cause == nil && ok && !time.Now().Before(deadline) {
+				cause = context.DeadlineExceeded
+			}
+			if cause != nil {
+				err = errors.Join(err, cause)
+			}
+		}
 		return nil, err
 	}
 	m.ConnectionSucceeded()
@@ -280,21 +381,37 @@ func startSession(ctx context.Context, role peer.Role, cfg peer.Config, m *metri
 	return sess, nil
 }
 
-// buildTransport selects the signaling transport from opts. DNS is the default;
-// https requires a --signaling-url.
+// buildTransport returns the selected transport after credential validation.
 func buildTransport(opts peerOpts) (sig.Transport, error) {
 	switch opts.signaling {
+	case "dynupdate":
+		return buildDynUpdate(opts)
 	case "", "dns":
-		return newTransport(opts.addr, opts.zone), nil
+		key, err := loadOptionalTSIG(opts.dnsTSIGKeyFile)
+		if err != nil {
+			return nil, err
+		}
+		tr := newTransport(opts.addr, opts.zone)
+		tr.Resolver.(*dns.Dialer).TSIGKey = key
+		return tr, nil
 	case "https":
-		return newHTTPSTransport(opts.signalingURL, opts.signalingSecret)
+		secret, err := https.LoadSecret(opts.signalingSecret, opts.signalingSecretFile)
+		if err != nil {
+			return nil, err
+		}
+		tr, err := newHTTPSTransport(opts.signalingURL, secret)
+		if err != nil {
+			return nil, err
+		}
+		tr.AllowLoopbackHTTP = opts.allowLoopbackHTTP
+		return tr, nil
 	default:
-		return nil, fmt.Errorf("unknown signaling %q (want dns or https)", opts.signaling)
+		return nil, fmt.Errorf("unknown signaling %q (want dns, https, or dynupdate)", opts.signaling)
 	}
 }
 
 // newHTTPSTransport builds an HTTPS transport from the given base URL.
-func newHTTPSTransport(baseURL, secret string) (sig.Transport, error) {
+func newHTTPSTransport(baseURL, secret string) (*https.Transport, error) {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil, errors.New("https: --signaling-url is required for --signaling https")
 	}
@@ -335,8 +452,11 @@ func runAnswer(ctx context.Context, args []string) error {
 
 // startServe starts an in-process DNS signaling server and returns it. Callers
 // stop it with srv.Stop().
-func startServe() (*dns.Server, error) {
+func startServe(keys ...*dns.TSIGKey) (*dns.Server, error) {
 	srv := dns.NewServer()
+	if len(keys) > 0 {
+		srv.TSIGKey = keys[0]
+	}
 	if err := srv.Start(context.Background()); err != nil {
 		return nil, fmt.Errorf("start server: %w", err)
 	}
@@ -357,15 +477,15 @@ func startTurnServer(out io.Writer, cfg turnserver.Config) (*turnserver.Server, 
 	fmt.Fprintf(out, "turn-server listening on %s\n", s.Addr())
 	fmt.Fprintf(out, "  srflx: --turn %s\n", s.STUNURI())
 	if uri := s.TURNURI(); uri != "" {
-		fmt.Fprintf(out, "  relay: --turn %s --user %s --pass %s\n", uri, cfg.Username, cfg.Password)
+		fmt.Fprintf(out, "  relay: --turn %s --user <USERNAME> --pass-file <PATH>\n", uri)
 	} else {
-		fmt.Fprintln(out, "  relay: set --turn-user/--turn-pass to enable relay candidates")
+		fmt.Fprintln(out, "  relay: set --turn-user and --turn-pass-file to enable relay candidates")
 	}
 	return s, nil
 }
 
 // newTransport builds the DNS write-over-query transport pointed at srvAddr.
-func newTransport(srvAddr, zone string) sig.Transport {
+func newTransport(srvAddr, zone string) *dns.WriteOverQuery {
 	return &dns.WriteOverQuery{
 		Resolver:     &dns.Dialer{Addr: srvAddr, Net: "udp", Timeout: defaultDialTimeout},
 		Zone:         zone,
@@ -427,4 +547,11 @@ func chat(ctx context.Context, sess *peer.Session, role peer.Role, in io.Reader,
 	case err := <-readerDone:
 		return err
 	}
+}
+
+func loadOptionalTSIG(path string) (*dns.TSIGKey, error) {
+	if path == "" {
+		return nil, nil
+	}
+	return dns.LoadTSIGKey(path)
 }

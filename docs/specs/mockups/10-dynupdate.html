@@ -1,0 +1,9 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>RFC 2136 DynUpdate transport — proposed terminal</title><style>:root{color-scheme:light dark;font:16px/1.6 system-ui;background:light-dark(#f5f4ef,#10191b);color:light-dark(#183132,#d9eeeb)}body{max-width:900px;margin:6vh auto;padding:24px}small{letter-spacing:.15em}h1{font-size:clamp(28px,5vw,48px);line-height:1.1}section{background:light-dark(#fff,#182729);border:1px solid #63827c;border-radius:12px;padding:24px;margin-top:30px}code,pre{font-family:ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}b{color:light-dark(#25625b,#81cbb8)}p{border-bottom:1px solid #63827c;padding:12px 0}</style><body><small>WINGMAN / PROPOSED CLI EXPERIENCE</small><h1>RFC 2136 DynUpdate transport</h1><section><pre>$ wingman help
+Proposed options: --signaling dynupdate --addr HOST:PORT --zone ZONE --dns-tsig-key-file PATH.
+`wingman cleanup` requires room, zone, address, and the same key file.
+Print update rejection, signature failure, timeout, or cleanup outcome without secrets.</pre></section><section><h2>Observable results</h2><p><b>01</b> CLI parsing constructs the DynUpdate transport.</p>
+<p><b>02</b> A replacement of a longer message leaves no stale fragments.</p>
+<p><b>03</b> A shuffled TXT answer reconstructs identical bytes.</p>
+<p><b>04</b> A missing key fails before any UPDATE.</p>
+<p><b>05</b> Cleanup removes only the selected room records.</p>
+<p><b>06</b> A pinned BIND fixture completes a real offer/answer exchange.</p></section><footer>Illustrative terminal states. Requirements define behavior. This page makes no network requests.</footer></body></html>

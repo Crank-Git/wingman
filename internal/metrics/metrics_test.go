@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,39 @@ import (
 	"testing"
 	"time"
 )
+
+func TestZeroValueRecordsCandidates(t *testing.T) {
+	var m Metrics
+	m.RecordCandidate("host")
+	if got := m.Candidates()["host"]; got != 1 {
+		t.Fatalf("host count = %d, want 1", got)
+	}
+	w := httptest.NewRecorder()
+	m.MetricsHandler().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "# TYPE wingman_candidates_host counter\nwingman_candidates_host 1\n") {
+		t.Fatalf("metrics response = %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestCandidateNamesRemainBounded(t *testing.T) {
+	m := New()
+	for _, kind := range []string{"host", "srflx", "prflx", "relay", "unknown", "", "HOST", "host\ninjected_metric 42", "host{label=\"value\"}", "arbitrary"} {
+		m.RecordCandidate(kind)
+	}
+	got := m.Candidates()
+	if len(got) != 5 || got["unknown"] != 6 {
+		t.Fatalf("candidate counts = %v, want five types and six unknown observations", got)
+	}
+	for _, kind := range []string{"host", "srflx", "prflx", "relay", "unknown"} {
+		want := fmt.Sprintf("wingman_candidates_%s %d\n", kind, got[kind])
+		if !strings.Contains(m.Text(), want) {
+			t.Errorf("metrics omit %q", want)
+		}
+	}
+	if strings.Contains(m.Text(), "injected_metric") || strings.Contains(m.Text(), "label=") {
+		t.Fatalf("candidate text changes the exposition: %s", m.Text())
+	}
+}
 
 func TestCountersIncrement(t *testing.T) {
 	m := New()
@@ -102,7 +136,7 @@ func TestSnapshotIsImmutableCopy(t *testing.T) {
 
 // TestConcurrentAccess guards against data races under -race.
 func TestConcurrentAccess(t *testing.T) {
-	m := New()
+	var m Metrics
 	var wg sync.WaitGroup
 	for i := 0; i < 50; i++ {
 		wg.Add(1)

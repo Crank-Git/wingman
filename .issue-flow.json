@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "forge": {
+    "type": "github",
+    "host": "https://github.com",
+    "owner": "Crank-Git",
+    "repo": "wingman",
+    "interface": "cli"
+  },
+  "concurrency": 3,
+  "batchSize": 4,
+  "runLength": {
+    "mode": "backlog"
+  },
+  "prGranularity": "batch",
+  "prAuthority": "autonomous",
+  "planReview": false,
+  "reviewWipLimit": 2,
+  "review": {
+    "when": "end-of-session"
+  },
+  "deploy": {
+    "mode": "none",
+    "url": null,
+    "previewUrlPattern": null
+  },
+  "docsMcp": {
+    "offered": [],
+    "installed": [],
+    "marketplacesAdded": [],
+    "declined": false,
+    "restartPending": false
+  },
+  "practices": {
+    "tdd": true,
+    "ddd": false,
+    "e2e": "user-facing",
+    "coverage": 95,
+    "commitStyle": "conventional",
+    "docs": "public-api"
+  },
+  "notes": "Operator approved autonomous merges to dev. Main is the live branch per the approved spec; promotion requires approval. No additional documentation MCP source was found."
+}

@@ -143,7 +143,7 @@ func (r gapResolver) Exchange(_ context.Context, m *dns.Msg) (*dns.Msg, error) {
 	resp.SetReply(m)
 	for _, name := range r.names {
 		resp.Answer = append(resp.Answer, &dns.TXT{
-			Hdr: dns.RR_Header{Name: dns.Fqdn(name), Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 1},
+			Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 1},
 			Txt: []string{name},
 		})
 	}
@@ -198,7 +198,7 @@ func (r incompleteResolver) Exchange(_ context.Context, m *dns.Msg) (*dns.Msg, e
 	}
 	fragName := sig.RendezvousName("example.com", r.room, sig.Offer, 0, 2, enc)
 	resp.Answer = append(resp.Answer, &dns.TXT{
-		Hdr: dns.RR_Header{Name: dns.Fqdn(fragName), Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 1},
+		Hdr: dns.RR_Header{Name: m.Question[0].Name, Rrtype: dns.TypeTXT, Class: dns.ClassINET, Ttl: 1},
 		Txt: []string{fragName},
 	})
 	return resp, nil

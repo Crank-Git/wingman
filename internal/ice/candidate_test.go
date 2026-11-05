@@ -62,24 +62,49 @@ func TestParseCandidateTypeInvalid(t *testing.T) {
 
 func TestCandidatePriorityMatchesPionFormula(t *testing.T) {
 	// priority = (2^24)*typePreference + (2^8)*localPreference + (256 - component)
-	got := CandidatePriority(126, 65535, 1)
+	got := mustCandidatePriority(t, 126, 65535, 1)
 	want := uint32((1<<24)*126 + (1<<8)*65535 + (256 - 1))
 	if got != want {
 		t.Fatalf("priority = %d, want %d", got, want)
 	}
 }
 
+func TestCandidatePriorityRejectsInvalidComponents(t *testing.T) {
+	for _, component := range []uint16{0, 257, math.MaxUint16} {
+		priority, err := CandidatePriority(126, 65535, component)
+		if err == nil {
+			t.Errorf("component %d: expected validation error", component)
+		}
+		if priority != 0 {
+			t.Errorf("component %d: priority = %d, want 0", component, priority)
+		}
+	}
+}
+
+func TestCandidatePriorityPreservesValidComponents(t *testing.T) {
+	for component := uint16(1); component <= 256; component++ {
+		priority, err := CandidatePriority(126, 65535, component)
+		if err != nil {
+			t.Fatalf("component %d: %v", component, err)
+		}
+		want := uint32((1<<24)*126+(1<<8)*65535) + 256 - uint32(component)
+		if priority != want {
+			t.Errorf("component %d: priority = %d, want %d", component, priority, want)
+		}
+	}
+}
+
 func TestCandidatePriorityHostBeatsRelay(t *testing.T) {
-	host := CandidatePriority(CandidateTypeHost.Preference(), 0, 1)
-	relay := CandidatePriority(CandidateTypeRelay.Preference(), math.MaxUint16, 1)
+	host := mustCandidatePriority(t, CandidateTypeHost.Preference(), 0, 1)
+	relay := mustCandidatePriority(t, CandidateTypeRelay.Preference(), math.MaxUint16, 1)
 	if host <= relay {
 		t.Fatalf("host priority %d must exceed relay priority %d", host, relay)
 	}
 }
 
 func TestCandidatePriorityLocalPreferenceBreaksTies(t *testing.T) {
-	a := CandidatePriority(CandidateTypeHost.Preference(), 100, 1)
-	b := CandidatePriority(CandidateTypeHost.Preference(), 200, 1)
+	a := mustCandidatePriority(t, CandidateTypeHost.Preference(), 100, 1)
+	b := mustCandidatePriority(t, CandidateTypeHost.Preference(), 200, 1)
 	if a >= b {
 		t.Fatalf("higher local preference should win: %d vs %d", a, b)
 	}
@@ -93,7 +118,7 @@ func TestNewHost(t *testing.T) {
 	if c.Address != "192.168.1.10" || c.Port != 5000 {
 		t.Fatalf("address/port = %s:%d", c.Address, c.Port)
 	}
-	if c.Priority != CandidatePriority(126, 65535, 1) {
+	if c.Priority != mustCandidatePriority(t, 126, 65535, 1) {
 		t.Fatal("priority not computed")
 	}
 }
@@ -118,4 +143,13 @@ func TestNetworkLower(t *testing.T) {
 	if got := NewHost(net.ParseIP("10.0.0.1"), 1, 1).NetworkLower(); got != "udp" {
 		t.Fatalf("NetworkLower = %q, want udp", got)
 	}
+}
+
+func mustCandidatePriority(t *testing.T, typePreference, localPreference, component uint16) uint32 {
+	t.Helper()
+	priority, err := CandidatePriority(typePreference, localPreference, component)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return priority
 }

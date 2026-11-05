@@ -4,12 +4,14 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-go mod tidy
 go vet ./...
 
-go test ./... -coverprofile=/tmp/wingman-cover.out
+profile="$(mktemp "${TMPDIR:-/tmp}/wingman-cover.XXXXXX")"
+trap 'rm -f "$profile"' EXIT
 
-total="$(go tool cover -func=/tmp/wingman-cover.out | awk '/^total:/{print $3}')"
+go test ./... -coverprofile="$profile"
+
+total="$(go tool cover -func="$profile" | awk '/^total:/{print $3}')"
 pct="${total%\%}"
 
 if awk -v p="$pct" 'BEGIN {exit !(p + 0 >= 95)}'; then

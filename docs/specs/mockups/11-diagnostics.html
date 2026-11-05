@@ -1,0 +1,8 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Diagnostics and network verification — proposed terminal</title><style>:root{color-scheme:light dark;font:16px/1.6 system-ui;background:light-dark(#f5f4ef,#10191b);color:light-dark(#183132,#d9eeeb)}body{max-width:900px;margin:6vh auto;padding:24px}small{letter-spacing:.15em}h1{font-size:clamp(28px,5vw,48px);line-height:1.1}section{background:light-dark(#fff,#182729);border:1px solid #63827c;border-radius:12px;padding:24px;margin-top:30px}code,pre{font-family:ui-monospace,monospace;white-space:pre-wrap;overflow-wrap:anywhere}b{color:light-dark(#25625b,#81cbb8)}p{border-bottom:1px solid #63827c;padding:12px 0}</style><body><small>WINGMAN / PROPOSED CLI EXPERIENCE</small><h1>Diagnostics and network verification</h1><section><pre>$ wingman help
+`wingman doctor` prints stage, result, duration, and a suggested correction.
+An optional --json mode emits versioned structured results. Exit 0 means every requested check passes.
+A relay result says relay; it does not claim direct connectivity. The mockup shows the proposed terminal result contract.</pre></section><section><h2>Observable results</h2><p><b>01</b> Doctor detects an unreachable endpoint with a nonzero exit.</p>
+<p><b>02</b> A relay-only test reports relay after successful message transfer.</p>
+<p><b>03</b> The namespace suite transfers data through the local TURN server.</p>
+<p><b>04</b> A fresh clone runs the demo without manual SDP exchange.</p>
+<p><b>05</b> Captured logs contain no test password, secret, or raw SDP.</p></section><footer>Illustrative terminal states. Requirements define behavior. This page makes no network requests.</footer></body></html>

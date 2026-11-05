@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -131,7 +132,7 @@ func TestRunServeStartsAndStops(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		cancel()
 	}()
-	if err := runServe(ctx, nil); err != nil {
+	if err := runServe(ctx, []string{"--local-demo"}); err != nil {
 		t.Fatalf("runServe: %v", err)
 	}
 }
@@ -170,7 +171,7 @@ func TestStartTurnServerSTUNOnly(t *testing.T) {
 }
 
 // TestStartTurnServerWithCreds confirms a server with credentials advertises a
-// TURN URI and prints the peer hint with the credentials.
+// TURN URI and prints the peer hint with placeholders.
 func TestStartTurnServerWithCreds(t *testing.T) {
 	var buf strings.Builder
 	s, err := startTurnServer(&buf, turnserver.Config{Addr: "127.0.0.1:0", Username: "alice", Password: "s3cret"})
@@ -184,8 +185,8 @@ func TestStartTurnServerWithCreds(t *testing.T) {
 	if !strings.Contains(buf.String(), s.TURNURI()) {
 		t.Errorf("output missing TURN URI %q:\n%s", s.TURNURI(), buf.String())
 	}
-	if !strings.Contains(buf.String(), "--user alice --pass s3cret") {
-		t.Errorf("relay hint missing credentials:\n%s", buf.String())
+	if !strings.Contains(buf.String(), "--user <USERNAME> --pass-file <PATH>") {
+		t.Errorf("relay hint missing placeholders:\n%s", buf.String())
 	}
 }
 
@@ -207,7 +208,7 @@ func TestRunServeTurnServer(t *testing.T) {
 		time.Sleep(150 * time.Millisecond)
 		cancel()
 	}()
-	if err := runServe(ctx, []string{"--turn-server", "127.0.0.1:0", "--turn-user", "u", "--turn-pass", "p"}); err != nil {
+	if err := runServe(ctx, []string{"--local-demo", "--turn-server", "127.0.0.1:0", "--turn-user", "u", "--turn-pass", "p"}); err != nil {
 		t.Fatalf("runServe with --turn-server: %v", err)
 	}
 }
@@ -232,7 +233,7 @@ func TestRunServeServesMetrics(t *testing.T) {
 	}()
 
 	done := make(chan error, 1)
-	go func() { done <- runServe(ctx, []string{"--metrics-addr", addr}) }()
+	go func() { done <- runServe(ctx, []string{"--local-demo", "--metrics-addr", addr}) }()
 
 	url := "http://" + addr + "/metrics"
 	var resp *http.Response
@@ -376,6 +377,7 @@ func TestRunPeerHappyPath(t *testing.T) {
 	room := "runpeer-room"
 	received := make(chan string, 1)
 	ready := make(chan struct{})
+	remoteClosed := make(chan struct{})
 	go func() {
 		ans, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman")
 		if err != nil {
@@ -384,6 +386,9 @@ func TestRunPeerHappyPath(t *testing.T) {
 			return
 		}
 		ans.OnMessage(func(data []byte) { received <- string(data) })
+		t.Cleanup(func() { _ = ans.Close() })
+		dc, _ := ans.DataChannel()
+		dc.OnClose(func() { close(remoteClosed) })
 		close(ready)
 	}()
 
@@ -391,11 +396,13 @@ func TestRunPeerHappyPath(t *testing.T) {
 	out := &bytes.Buffer{}
 	errCh := make(chan error, 1)
 	go func() {
-		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman"}
+		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman", handshakeTimeout: 2 * time.Second}
 		errCh <- runPeer(ctx, peer.RoleOfferer, opts, br, out)
 	}()
 
 	<-ready // answer registered before we release the input line
+	// The completed handshake deadline must not close the live channel.
+	time.Sleep(2100 * time.Millisecond)
 	br.ch <- []byte("hello from run\n")
 	select {
 	case <-received:
@@ -415,6 +422,74 @@ func TestRunPeerHappyPath(t *testing.T) {
 	if !strings.Contains(out.String(), "offer: connected") {
 		t.Fatalf("missing connected notice: %q", out.String())
 	}
+	if !strings.Contains(out.String(), "selected pair: local=host remote=host") {
+		t.Fatalf("missing selected pair: %q", out.String())
+	}
+	select {
+	case <-remoteClosed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("runPeer leaves the remote channel open after EOF")
+	}
+}
+
+func TestSelectedPairOutputReportsUnavailable(t *testing.T) {
+	var out bytes.Buffer
+	if err := printSelectedPair(&out, peer.CandidatePairTypes{}, false); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); got != "selected pair: unavailable\n" {
+		t.Fatalf("selected pair output = %q", got)
+	}
+}
+
+type selectedPairErrorWriter struct{ cause error }
+
+func (w selectedPairErrorWriter) Write([]byte) (int, error) { return 0, w.cause }
+
+func TestSelectedPairOutputPreservesWriterError(t *testing.T) {
+	cause := errors.New("selected pair output failed")
+	for _, available := range []bool{false, true} {
+		err := printSelectedPair(selectedPairErrorWriter{cause}, peer.CandidatePairTypes{Local: "host", Remote: "relay"}, available)
+		if !errors.Is(err, cause) || !strings.Contains(err.Error(), "write selected pair") {
+			t.Fatalf("available=%v: error = %v", available, err)
+		}
+	}
+}
+
+func TestRunPeerPreservesSelectedPairWriterError(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: "output-error", label: "wingman"}
+	transport, err := buildTransport(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	remote := peer.NewSession(peer.RoleAnswerer, peer.Config{Room: opts.room, Zone: opts.zone, Transport: transport})
+	defer func() {
+		if err := remote.Close(); err != nil {
+			t.Errorf("close remote: %v", err)
+		}
+	}()
+	done := make(chan error, 1)
+	go func() {
+		_, err := remote.Start(ctx)
+		done <- err
+	}()
+	cause := errors.New("selected pair output failed")
+	err = runPeer(ctx, peer.RoleOfferer, opts, strings.NewReader(""), selectedPairErrorWriter{cause})
+	cancel()
+	if remoteErr := <-done; remoteErr != nil {
+		// The local output failure can close the channel before remote startup returns.
+		t.Logf("remote startup after local output failure: %v", remoteErr)
+	}
+	if !errors.Is(err, cause) || !strings.Contains(err.Error(), "write selected pair") {
+		t.Fatalf("runPeer error = %v", err)
+	}
 }
 
 // TestDispatchRoutesCommands checks that dispatch reaches each handler. serve
@@ -426,7 +501,7 @@ func TestDispatchRoutesCommands(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
-	if err := dispatch(ctx, []string{"serve"}); err != nil {
+	if err := dispatch(ctx, []string{"serve", "--local-demo"}); err != nil {
 		t.Fatalf("dispatch serve: %v", err)
 	}
 
@@ -440,6 +515,15 @@ func TestDispatchRoutesCommands(t *testing.T) {
 
 // TestRunPeerAnswerer drives the answerer through runPeer and chat.
 func TestRunPeerAnswerer(t *testing.T) {
+	runAnswerFixture(t, func(ctx context.Context, addr, room string, in, out *os.File) error {
+		opts := peerOpts{addr: addr, zone: defaultZone, room: room, label: "wingman"}
+		return runPeer(ctx, peer.RoleAnswerer, opts, in, out)
+	})
+}
+
+// runAnswerFixture keeps both peers alive until each handshake succeeds.
+func runAnswerFixture(t *testing.T, answer func(context.Context, string, string, *os.File, *os.File) error) {
+	t.Helper()
 	srv, err := startServe()
 	if err != nil {
 		t.Fatalf("startServe: %v", err)
@@ -447,32 +531,93 @@ func TestRunPeerAnswerer(t *testing.T) {
 	defer srv.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	room := "answerer-room"
-	offerDone := make(chan struct{})
+	in, input, err := os.Pipe()
+	if err != nil {
+		cancel()
+		t.Fatalf("stdin pipe: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := in.Close(); err != nil {
+			t.Errorf("close stdin reader: %v", err)
+		}
+	})
+	var inputOnce sync.Once
+	closeInput := func() {
+		inputOnce.Do(func() {
+			if err := input.Close(); err != nil {
+				t.Errorf("close stdin writer: %v", err)
+			}
+		})
+	}
+	t.Cleanup(closeInput)
+	output, out, err := os.Pipe()
+	if err != nil {
+		cancel()
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	buf := &lockedBuffer{}
+	outputDone := make(chan error, 1)
 	go func() {
-		defer close(offerDone)
-		if _, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectOffer: %v", err)
+		_, err := io.Copy(buf, output)
+		outputDone <- err
+	}()
+	var workers sync.WaitGroup
+	offerReady := make(chan error, 1)
+	offerClosed := make(chan error, 1)
+	defer func() {
+		cancel()
+		closeInput()
+		workers.Wait()
+		if err := <-offerClosed; err != nil {
+			t.Errorf("close offer: %v", err)
+		}
+		if err := out.Close(); err != nil {
+			t.Errorf("close stdout writer: %v", err)
+		}
+		if err := <-outputDone; err != nil {
+			t.Errorf("read stdout: %v", err)
+		}
+		if err := output.Close(); err != nil {
+			t.Errorf("close stdout reader: %v", err)
 		}
 	}()
 
-	br := newBlockingReader()
-	// Let the handshake proceed, then EOF the chat so it returns.
+	room := "answerer-room"
+	workers.Add(2)
 	go func() {
-		time.Sleep(50 * time.Millisecond)
-		close(br.done)
+		defer workers.Done()
+		offer, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman")
+		offerReady <- err
+		if err != nil {
+			offerClosed <- nil
+			return
+		}
+		<-ctx.Done()
+		offerClosed <- offer.Close()
 	}()
-
-	out := &bytes.Buffer{}
-	opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: room, label: "wingman"}
-	if err := runPeer(ctx, peer.RoleAnswerer, opts, br, out); err != nil {
-		t.Fatalf("runPeer answerer: %v", err)
+	answerDone := make(chan error, 1)
+	go func() {
+		defer workers.Done()
+		answerDone <- answer(ctx, srv.Addr(), room, in, out)
+	}()
+	select {
+	case err := <-offerReady:
+		if err != nil {
+			t.Fatalf("connectOffer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connectOffer did not return")
 	}
-	<-offerDone
-	if !strings.Contains(out.String(), "answer: connected") {
-		t.Fatalf("missing connected notice: %q", out.String())
+	waitOut(t, buf, "answer: connected", 5*time.Second)
+	// EOF closes the answer Session, so both peers must finish Start first.
+	closeInput()
+	select {
+	case err := <-answerDone:
+		if err != nil {
+			t.Fatalf("answer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("answer did not return after EOF")
 	}
 }
 
@@ -497,27 +642,50 @@ func TestChatSendTextError(t *testing.T) {
 	defer srv.Stop()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	var workers sync.WaitGroup
+	defer func() {
+		// Cancellation releases setup and chat before cleanup waits for them.
+		cancel()
+		workers.Wait()
+	}()
 
 	room := "chat-senderr-room"
+	answerDone := make(chan error, 1)
+	workers.Add(1)
 	go func() {
-		if _, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectAnswer: %v", err)
-		}
+		defer workers.Done()
+		_, err := connectAnswer(ctx, srv.Addr(), defaultZone, room, "wingman")
+		answerDone <- err
 	}()
 
 	offer, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman")
 	if err != nil {
 		t.Fatalf("connectOffer: %v", err)
 	}
-	// Close the data channel so the next SendText fails.
-	if dc, ok := offer.DataChannel(); ok {
-		_ = dc.Close()
+	// Both peers must finish setup before channel closure can test SendText.
+	select {
+	case err := <-answerDone:
+		if err != nil {
+			t.Fatalf("connectAnswer: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("connectAnswer did not return")
+	}
+	dc, ok := offer.DataChannel()
+	if !ok {
+		t.Fatal("offer has no data channel")
+	}
+	if err := dc.Close(); err != nil {
+		t.Fatalf("close data channel: %v", err)
 	}
 
 	out := &bytes.Buffer{}
 	errCh := make(chan error, 1)
-	go func() { errCh <- chat(ctx, offer, peer.RoleOfferer, strings.NewReader("hello\n"), out) }()
+	workers.Add(1)
+	go func() {
+		defer workers.Done()
+		errCh <- chat(ctx, offer, peer.RoleOfferer, strings.NewReader("hello\n"), out)
+	}()
 
 	select {
 	case err := <-errCh:
@@ -529,41 +697,14 @@ func TestChatSendTextError(t *testing.T) {
 	}
 }
 
-// TestRunAnswerHappyPath drives the answerer through runAnswer with stdin
-// redirected to an empty file so the chat scanner hits EOF and returns.
+// TestRunAnswerHappyPath returns after EOF follows both successful handshakes.
 func TestRunAnswerHappyPath(t *testing.T) {
-	srv, err := startServe()
-	if err != nil {
-		t.Fatalf("startServe: %v", err)
-	}
-	defer srv.Stop()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	room := "answer-happy-room"
-	offerDone := make(chan struct{})
-	go func() {
-		defer close(offerDone)
-		if _, err := connectOffer(ctx, srv.Addr(), defaultZone, room, "wingman"); err != nil {
-			t.Errorf("connectOffer: %v", err)
-		}
-	}()
-
-	// Redirect stdin to an empty file so the chat scanner hits EOF immediately.
-	oldStdin := os.Stdin
-	defer func() { os.Stdin = oldStdin }()
-	f, err := os.CreateTemp("", "wingman-stdin")
-	if err != nil {
-		t.Fatalf("temp stdin: %v", err)
-	}
-	defer f.Close()
-	os.Stdin = f
-
-	if err := runAnswer(ctx, []string{"--addr", srv.Addr(), "--room", room}); err != nil {
-		t.Fatalf("runAnswer: %v", err)
-	}
-	<-offerDone
+	oldStdin, oldStdout := os.Stdin, os.Stdout
+	defer func() { os.Stdin, os.Stdout = oldStdin, oldStdout }()
+	runAnswerFixture(t, func(ctx context.Context, addr, room string, in, out *os.File) error {
+		os.Stdin, os.Stdout = in, out
+		return runAnswer(ctx, []string{"--addr", addr, "--room", room})
+	})
 }
 
 // TestCLIExec builds the binary and runs it end to end. This exercises main()
@@ -581,6 +722,10 @@ func TestCLIExec(t *testing.T) {
 	if out, err := build.CombinedOutput(); err != nil {
 		t.Fatalf("build wingman: %v\n%s", err, out)
 	}
+	t.Run("DynUpdate rejects invalid configuration", func(t *testing.T) { checkDynUpdateCLI(t, bin) })
+	t.Run("DynUpdate cleanup recovers a room", func(t *testing.T) { checkDynUpdateCleanupCLI(t, bin) })
+	t.Run("Doctor reports process results", func(t *testing.T) { checkDoctorOutputCLI(t, bin) })
+	t.Run("authenticated doctor updates server metrics", func(t *testing.T) { checkAuthenticatedOperationsCLI(t, bin) })
 
 	// help should exit 0 and print the usage banner.
 	helpCmd := exec.Command(bin, "help")
@@ -595,6 +740,70 @@ func TestCLIExec(t *testing.T) {
 	// an unknown command should exit non-zero.
 	if err := exec.Command(bin, "bogus").Run(); err == nil {
 		t.Fatal("run bogus: expected non-zero exit")
+	}
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, bin, "answer", "--addr", srv.Addr(), "--room", "cli-timeout", "--handshake-timeout", "50ms")
+	out, err = cmd.CombinedOutput()
+	if err == nil || !bytes.Contains(out, []byte("context deadline exceeded")) {
+		t.Fatalf("stalled handshake: err=%v output=%s", err, out)
+	}
+}
+
+func TestParsePeerFlagsHandshakeTimeout(t *testing.T) {
+	for _, role := range []string{"offer", "answer"} {
+		for _, tc := range []struct {
+			value string
+			want  time.Duration
+		}{
+			{"", 30 * time.Second},
+			{"90s", 90 * time.Second},
+			{"1m30s", 90 * time.Second},
+		} {
+			args := []string{"--addr", "127.0.0.1:5353", "--room", "r"}
+			if tc.value != "" {
+				args = append(args, "--handshake-timeout", tc.value)
+			}
+			opts, err := parsePeerFlags(role, args)
+			if err != nil || opts.handshakeTimeout != tc.want {
+				t.Fatalf("%s duration %q: opts=%+v err=%v", role, tc.value, opts, err)
+			}
+		}
+		for _, value := range []string{"0", "-1s", "invalid", "999999999999999999999s"} {
+			_, err := parsePeerFlags(role, []string{"--addr", "127.0.0.1:5353", "--room", "r", "--handshake-timeout", value})
+			if err == nil {
+				t.Fatalf("%s accepts duration %q", role, value)
+			}
+		}
+	}
+}
+
+func TestRunPeerHandshakePreservesContextCause(t *testing.T) {
+	srv, err := startServe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer srv.Stop()
+	for _, role := range []peer.Role{peer.RoleOfferer, peer.RoleAnswerer} {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		opts := peerOpts{addr: srv.Addr(), zone: defaultZone, room: role.String(), handshakeTimeout: 50 * time.Millisecond}
+		start := time.Now()
+		err := runPeer(ctx, role, opts, strings.NewReader(""), io.Discard)
+		cancel()
+		if !errors.Is(err, context.DeadlineExceeded) || time.Since(start) > time.Second {
+			t.Fatalf("%s timeout: err=%v elapsed=%v", role, err, time.Since(start))
+		}
+		ctx, cancel = context.WithCancel(context.Background())
+		cancel()
+		err = runPeer(ctx, role, opts, strings.NewReader(""), io.Discard)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s cancellation: %v", role, err)
+		}
 	}
 }
 
@@ -942,8 +1151,11 @@ func TestStartSessionFailureMetrics(t *testing.T) {
 // path works end to end.
 func TestRunPeerHTTPS(t *testing.T) {
 	h := https.NewHandler()
-	srv := httptest.NewServer(h)
+	srv := httptest.NewTLSServer(h)
 	defer srv.Close()
+	previousClient := http.DefaultClient
+	http.DefaultClient = srv.Client()
+	defer func() { http.DefaultClient = previousClient }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
