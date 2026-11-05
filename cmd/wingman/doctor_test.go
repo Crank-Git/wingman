@@ -55,7 +55,7 @@ func TestDoctorProbesHTTPSAuthentication(t *testing.T) {
 			handler.Secret = secret
 			srv := httptest.NewServer(handler)
 			defer srv.Close()
-			opts := doctorOptions{peerOpts: peerOpts{signaling: "https", signalingURL: srv.URL, allowLoopbackHTTP: true, signalingSecret: secret}, timeout: time.Second}
+			opts := doctorOptions{peerOpts: peerOpts{signaling: "https", addr: "unused-malformed-address", signalingURL: srv.URL, allowLoopbackHTTP: true, signalingSecret: secret}, timeout: time.Second}
 			report := executeDoctor(context.Background(), opts)
 			want := 2
 			if secret != "" {
@@ -287,5 +287,37 @@ func TestDoctorRejectsRoomAndInvalidTimeout(t *testing.T) {
 func TestDoctorRejectsUnreachableEndpoint(t *testing.T) {
 	if run(context.Background(), []string{"doctor", "--addr", "127.0.0.1:1", "--timeout", "20ms"}) == 0 {
 		t.Fatal("unreachable endpoint succeeds")
+	}
+}
+
+func TestDoctorRejectsMalformedDNSAddresses(t *testing.T) {
+	for _, signaling := range []string{"dns", "dynupdate"} {
+		for _, addr := range []string{"not-an-endpoint", ":53", "host:", "[::1:53", "::1:53", "host:-1", "host:65536", "host:unknown-wingman-service", "private-marker"} {
+			t.Run(signaling+"/"+addr, func(t *testing.T) {
+				opts := doctorOptions{peerOpts: peerOpts{signaling: signaling, addr: addr, zone: defaultZone}, timeout: time.Millisecond}
+				report := executeDoctor(context.Background(), opts)
+				if report.Success || len(report.Checks) != 1 || report.Checks[0].Name != "configuration" || report.Checks[0].ErrorCode != "configuration" || !strings.Contains(report.Checks[0].Correction, "HOST:PORT") {
+					t.Fatalf("%+v", report)
+				}
+				var out bytes.Buffer
+				if err := writeDoctorReport(&out, report); err != nil {
+					t.Fatal(err)
+				}
+				if !strings.Contains(out.String(), "HOST:PORT") || strings.Contains(out.String(), "private-marker") {
+					t.Fatalf("%s", &out)
+				}
+			})
+		}
+	}
+}
+
+func TestDoctorAcceptsDNSAddressShapes(t *testing.T) {
+	for _, addr := range []string{"host.invalid:53", "127.0.0.1:53", "[::1]:53", "[fe80::1%lo0]:53", "localhost:domain", "127.0.0.1:0"} {
+		t.Run(addr, func(t *testing.T) {
+			plan, err := buildDoctorPlan(doctorOptions{peerOpts: peerOpts{signaling: "dns", addr: addr, zone: defaultZone}})
+			if err != nil || len(plan.stages) != 2 {
+				t.Fatalf("plan=%+v err=%v", plan, err)
+			}
+		})
 	}
 }
