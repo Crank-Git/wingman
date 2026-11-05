@@ -14,6 +14,20 @@ Start with [First local exchange](first-run.md).
 | Check service health and metrics | [Operations](operations.md) |
 | Inspect review evidence and limits | [Review ledger](review-ledger.md) |
 
-Commands use `wingman` from your executable search path. Replace uppercase placeholders with your configured values. Use the [deployment guide](../deployment.md#restricted-credentials) to prepare restricted credential files. EOF means end of file. HTTP means Hypertext Transfer Protocol. HTTPS means HTTP over TLS. UDP means User Datagram Protocol. TCP means Transmission Control Protocol. DNS means Domain Name System. TSIG means DNS transaction signature. TLS means Transport Layer Security. TURN means Traversal Using Relays around NAT. See the [project Terms](../specs/spec.md#terms) for other protocol terms.
+Commands use `wingman` from your executable search path. Replace uppercase placeholders with your configured values. Use the [deployment guide](../deployment.md#restricted-credentials) to prepare restricted credential files.
+
+| Term | Meaning |
+|---|---|
+| EOF | End of file |
+| HTTP | Hypertext Transfer Protocol |
+| HTTPS | HTTP over TLS |
+| UDP | User Datagram Protocol |
+| TCP | Transmission Control Protocol |
+| DNS | Domain Name System |
+| TSIG | DNS transaction signature |
+| TLS | Transport Layer Security |
+| TURN | Traversal Using Relays around NAT |
+
+See the [project Terms](../specs/spec.md#terms) for other protocol terms.
 
 The CLI has no graphical interface. Exact terminal excerpts replace screenshots for CLI steps. The operations page includes three actual endpoint screenshots.
