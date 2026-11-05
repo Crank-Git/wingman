@@ -33,7 +33,7 @@ func (t *DynUpdate) Poll(ctx context.Context, room string, kind sig.Kind) ([]byt
 		}
 		reply, err := t.Resolver.Exchange(ctx, query)
 		if err != nil {
-			return nil, fmt.Errorf("DynUpdate poll exchange: %w", err)
+			return nil, dynUpdateExchangeError("poll", err)
 		}
 		if reply == nil {
 			return nil, errors.New("DynUpdate poll: nil resolver response")

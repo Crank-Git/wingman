@@ -1,6 +1,19 @@
 package dns
 
-import "fmt"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/miekg/dns"
+)
+
+func dynUpdateExchangeError(operation string, err error) error {
+	if errors.Is(err, dns.ErrAuth) {
+		// ErrAuth can precede signature verification, so it does not identify the remote cause.
+		return fmt.Errorf("DynUpdate %s exchange: %w; check the configured zone, authoritative endpoint, key identity/file, and server update policy", operation, err)
+	}
+	return fmt.Errorf("DynUpdate %s exchange: %w", operation, err)
+}
 
 // DynUpdateRcodeError identifies a rejected authenticated DNS operation.
 type DynUpdateRcodeError struct {

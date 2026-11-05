@@ -39,7 +39,7 @@ func (t *DynUpdate) cleanupKinds(ctx context.Context, room string, kinds ...sig.
 	}
 	reply, err := t.Resolver.Exchange(ctx, m)
 	if err != nil {
-		return fmt.Errorf("DynUpdate cleanup exchange: %w", err)
+		return dynUpdateExchangeError("cleanup", err)
 	}
 	if reply == nil {
 		return errors.New("DynUpdate cleanup: nil resolver response")

@@ -48,6 +48,13 @@ Use a fresh room for each exchange. A one-second record TTL controls cache reten
 
 If an exchange stops early, run the cleanup command before you discard its configuration.
 
-> **Known limitation:** A wrong zone can produce the same authentication error as a wrong secret. Check the zone, authoritative endpoint, key, and update policy. See [R2, issue #121](https://github.com/Crank-Git/wingman/issues/121).
+A wrong zone can produce the same authentication error as a wrong key. The error includes these configuration checks:
+
+- Check the configured zone.
+- Check the authoritative endpoint.
+- Check the key identity and key file.
+- Check the server update policy.
+
+The advice does not identify the remote cause. The client requires valid signatures before it trusts a response. See [issue #121](https://github.com/Crank-Git/wingman/issues/121).
 
 The review completes a real BIND exchange and cleanup. Its nine acceptance checks also verify replacement, shuffled records, unauthorized requests, bounds, cancellation, and preservation of unrelated records. The separate CLI session confirms both receipts and repeated cleanup. This evidence covers a disposable local BIND server, not public DNS.
