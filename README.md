@@ -7,6 +7,7 @@
 <p align="center">
   <a href="https://github.com/Crank-Git/wingman/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/Crank-Git/wingman/ci.yml?branch=main&style=flat-square&label=ci&labelColor=30363d"></a>
   <img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/Crank-Git/wingman?style=flat-square&label=go&labelColor=30363d&color=7ee787">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-7ee787?style=flat-square&labelColor=30363d"></a>
 </p>
 
 <p align="center">
@@ -143,6 +144,10 @@ TSIG authenticates DNS messages; it doesn't encrypt SDP. Anyone on the path to t
 can read the offer and answer, including candidate addresses. Use the HTTPS transport if
 that matters to you. Credential files must be regular files that only their owner can
 read, or Wingman refuses them.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
 
 ---
 
