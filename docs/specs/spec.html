@@ -175,7 +175,7 @@ body.rv-open .layout { padding-right:21rem; }
 <li><a href="html/feature-diagnostics.html">Diagnostics and network verification</a></li>
 </ul></aside>
 <main>
-<p class="meta"><span class="badge">approved</span> &nbsp; created 2026-11-04 &nbsp; rendered 2026-11-04</p>
+<p class="meta"><span class="badge">approved</span> &nbsp; created 2026-11-04 &nbsp; rendered 2026-11-21</p>
 <h1>Wingman</h1>
 <h1 id="wingman">Wingman</h1>
 <h2 id="overview">Overview</h2>
@@ -455,6 +455,8 @@ body.rv-open .layout { padding-right:21rem; }
 </ul>
 <h2 id="changelog">Changelog</h2>
 <ul>
+<li>2026-11-21: Exempt README.md from STE. The README uses the voice of the operator and US English. docs/rules/ste.md and AGENTS.md state the exception. Every other document keeps STE. Move README reference material to docs/reference.md and the layout to CONTRIBUTING.md.
+</li>
 <li>2026-11-04: Limit doctor to the selected signaling endpoint and omit inapplicable checks. Allow at most one additional second for required DynUpdate cleanup after the probe deadline. Prove relay paths with actual local TURN and isolated namespace transfers.
 </li>
 <li>2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
