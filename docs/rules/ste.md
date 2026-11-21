@@ -44,6 +44,10 @@ reads two ways gets built two ways.
 
 Rewriting evidence destroys it. Rewriting a quote misrepresents the person.
 
+**`README.md` is the one exception.** The README uses the voice of the operator, not STE.
+US English still applies to it. Every other Markdown file keeps this standard, including
+`docs/*.md` and each `docs/manual/*.md` page.
+
 ---
 
 ## 2 — The rules

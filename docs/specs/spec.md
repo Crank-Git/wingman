@@ -6,7 +6,7 @@ status: approved
 spec_version: 2
 created: 2026-11-04
 approved: 2026-11-04
-html_generated: 2026-11-04
+html_generated: 2026-11-21
 branch_model: dev-and-live
 visibility: public
 features:
@@ -317,6 +317,7 @@ Every milestone leaves tests green. The operator approves each promotion from de
 - No product-critical question remains. The operator approved the additions and scaffold on 2026-11-04.
 
 ## Changelog
+- 2026-11-21: Exempt README.md from STE. The README uses the voice of the operator and US English. docs/rules/ste.md and AGENTS.md state the exception. Every other document keeps STE. Move README reference material to docs/reference.md and the layout to CONTRIBUTING.md.
 - 2026-11-04: Limit doctor to the selected signaling endpoint and omit inapplicable checks. Allow at most one additional second for required DynUpdate cleanup after the probe deadline. Prove relay paths with actual local TURN and isolated namespace transfers.
 - 2026-11-04: Use signed TCP without EDNS for DynUpdate. Keep validated message data when automatic cleanup fails, and provide explicit room cleanup for recovery.
 - 2026-11-04: Add restricted TURN password file inputs and omit credentials from startup hints so deployment examples meet the approved credential rule.
