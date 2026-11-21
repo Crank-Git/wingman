@@ -32,6 +32,7 @@ Use Go package names and colocated tests. Preserve error causes.
 Use concise imperative commit subjects. Follow existing fix:, refactor:, and chore: prefixes when applicable.
 Read docs/rules/quality.md before source or test changes.
 Read docs/rules/ste.md before prose, comments, test names, issues, or PR text.
+README.md is the one exception to STE. It uses the voice of the operator and US English.
 Read docs/rules/external-apis.md before external interface changes.
 
 ## Branch and release model
